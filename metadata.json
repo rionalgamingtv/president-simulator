@@ -1,0 +1,6 @@
+{
+  "name": "Executive Term",
+  "description": "An open-ended presidential career simulator with monthly briefings, free-form policy writing, public messaging, and Windows 11 desktop installation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
