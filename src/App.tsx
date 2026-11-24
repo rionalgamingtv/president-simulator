@@ -267,19 +267,29 @@ async function parseJsonResponse<T>(
     );
   }
   if (!res.ok || (parsed && typeof parsed === 'object' && parsed.error)) {
-    throw new Error(parsed.error || `${fallbackError} (HTTP ${res.status}).`);
+    throw new Error(
+      parsed.error
+        ? `${parsed.error} (HTTP ${res.status})`
+        : `${fallbackError} (HTTP ${res.status}).`
+    );
   }
   return parsed;
 }
 
-async function waitForSimulationBackend(maxWaitMs = 10000): Promise<void> {
+async function waitForSimulationBackend(maxWaitMs = 9000): Promise<void> {
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
+    const healthController = new AbortController();
+    const healthTimeout = window.setTimeout(
+      () => healthController.abort(),
+      3000
+    );
     try {
       const healthRes = await fetch('/api/health', {
         method: 'GET',
         cache: 'no-store',
         headers: { Accept: 'application/json' },
+        signal: healthController.signal,
       });
       const ct = (healthRes.headers.get('content-type') || '').toLowerCase();
       if (healthRes.ok && ct.includes('application/json')) {
@@ -288,9 +298,23 @@ async function waitForSimulationBackend(maxWaitMs = 10000): Promise<void> {
       }
     } catch {
       // Server still booting or proxy reconnecting
+    } finally {
+      window.clearTimeout(healthTimeout);
     }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 900));
   }
+}
+
+function isTransientSimulationError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === 'AbortError') {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err || '');
+  return (
+    /timed out|timeout|aborted|empty response|unexpected HTML response|invalid JSON response|Failed to fetch|Load failed|NetworkError|ECONNRESET|ETIMEDOUT|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED|HTTP 429|HTTP 500|HTTP 502|HTTP 503|HTTP 504/i.test(
+      msg
+    )
+  );
 }
 
 async function postSimulationApi<T>(
@@ -298,12 +322,12 @@ async function postSimulationApi<T>(
   body: unknown,
   fallbackError: string
 ): Promise<T> {
-  const maxAttempts = 4;
+  const maxAttempts = 3;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 75000);
+    const timeoutId = window.setTimeout(() => controller.abort(), 45000);
 
     try {
       const res = await fetch(url, {
@@ -322,24 +346,14 @@ async function postSimulationApi<T>(
     } catch (err) {
       window.clearTimeout(timeoutId);
       lastError = err;
-      const msg = err instanceof Error ? err.message : '';
-      const isTransient =
-        msg.includes('empty response') ||
-        msg.includes('unexpected HTML response') ||
-        msg.includes('Failed to fetch') ||
-        msg.includes('Load failed') ||
-        msg.includes('NetworkError') ||
-        msg.includes('HTTP 502') ||
-        msg.includes('HTTP 503') ||
-        msg.includes('HTTP 504');
-      if (attempt < maxAttempts && isTransient) {
-        await waitForSimulationBackend(attempt === 1 ? 4500 : 8000);
-        await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
+      if (attempt < maxAttempts && isTransientSimulationError(err)) {
+        await waitForSimulationBackend(attempt === 1 ? 4500 : 7500);
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
         continue;
       }
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw new Error(
-          `${fallbackError} The request timed out after 75 seconds. Please try again.`
+          `${fallbackError} The request timed out after multiple attempts. Please try again.`
         );
       }
       throw err;

@@ -10,6 +10,14 @@ import {
 
 dotenv.config();
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[Executive Term UnhandledRejection]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Executive Term UncaughtException]', err);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -33,33 +41,66 @@ function getAIClient() {
   });
 }
 
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 1): Promise<T> {
+function isRetryableModelError(err: unknown): boolean {
+  const status = Number((err as { status?: number })?.status);
+  if (Number.isInteger(status) && status >= 400 && status < 500 && status !== 429 && status !== 408) {
+    return false;
+  }
+  return true;
+}
+
+async function withRetry<T>(
+  fn: (signal: AbortSignal, attempt: number) => Promise<T>,
+  maxRetries = 1,
+  externalSignal?: AbortSignal
+): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (externalSignal?.aborted) {
+      throw new Error('Request cancelled by client.');
+    }
+
+    const controller = new AbortController();
+    const timeoutMs = attempt === 0 ? 18000 : 21000;
+    let timedOut = false;
+
+    const onExternalAbort = () => controller.abort();
+    externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        fn(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () =>
-              reject(
-                new Error(
-                  'Simulation model request timed out. Retrying or please try again.'
-                )
-              ),
-            25000
-          )
-        ),
+        fn(controller.signal, attempt),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(
+              new Error(
+                'Simulation model request timed out. Retrying or please try again.'
+              )
+            );
+          }, timeoutMs);
+        }),
       ]);
     } catch (err: unknown) {
-      lastError = err;
-      const status = (err as { status?: number })?.status;
-      if (status && status >= 400 && status < 500 && status !== 429) {
+      lastError = timedOut
+        ? new Error(
+            'Simulation model request timed out. Retrying or please try again.'
+          )
+        : err;
+      if (externalSignal?.aborted) {
+        throw lastError;
+      }
+      if (!isRetryableModelError(err)) {
         throw err;
       }
       if (attempt < maxRetries) {
-        await new Promise((res) => setTimeout(res, 500 * Math.pow(2, attempt)));
+        await new Promise((res) => setTimeout(res, 400 * Math.pow(2, attempt)));
       }
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
     }
   }
   throw lastError;
@@ -134,12 +175,24 @@ function parseGeminiJson(rawText?: string) {
 
 async function generateGeminiJson(
   ai: GoogleGenAI,
-  request: Parameters<GoogleGenAI['models']['generateContent']>[0]
+  request: Parameters<GoogleGenAI['models']['generateContent']>[0],
+  externalSignal?: AbortSignal
 ) {
-  return withRetry(async () => {
-    const response = await ai.models.generateContent(request);
-    return parseGeminiJson(response.text);
-  });
+  return withRetry(
+    async (signal) => {
+      const response = await ai.models.generateContent({
+        ...request,
+        config: {
+          maxOutputTokens: 4096,
+          ...(request.config ?? {}),
+          abortSignal: signal,
+        },
+      });
+      return parseGeminiJson(response.text);
+    },
+    1,
+    externalSignal
+  );
 }
 
 function toNum(val: unknown, fallback = 0): number {
@@ -669,8 +722,15 @@ function formatErrorResponse(err: unknown) {
   const message =
     err instanceof Error ? err.message : 'Unexpected simulation engine error.';
   const rawStatus = Number((err as { status?: number })?.status);
+  // Avoid emitting 502/503/504 directly because reverse proxies with
+  // error interception replace those statuses with HTML warmup/error pages.
   const status =
-    Number.isInteger(rawStatus) && rawStatus >= 400 && rawStatus <= 599
+    Number.isInteger(rawStatus) &&
+    rawStatus >= 400 &&
+    rawStatus <= 599 &&
+    rawStatus !== 502 &&
+    rawStatus !== 503 &&
+    rawStatus !== 504
       ? rawStatus
       : 500;
   return { status, error: message };
@@ -678,43 +738,56 @@ function formatErrorResponse(err: unknown) {
 
 async function runJsonWithKeepAlive(
   res: express.Response,
-  fn: () => Promise<unknown>
+  fn: (signal: AbortSignal) => Promise<unknown>
 ) {
   let headersFlushed = false;
   let closed = false;
+  const abortController = new AbortController();
+
+  const safeWriteChunk = (chunk: string) => {
+    if (closed || res.writableEnded || res.destroyed) return;
+    try {
+      res.write(chunk);
+    } catch {
+      closed = true;
+    }
+  };
 
   const flushKeepAliveHeaders = () => {
     if (headersFlushed || closed || res.writableEnded || res.destroyed) return;
     headersFlushed = true;
-    res.status(200);
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders?.();
+    try {
+      res.status(200);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders?.();
+    } catch {
+      closed = true;
+    }
   };
 
   const initialFlushTimer = setTimeout(() => {
     flushKeepAliveHeaders();
-    if (!closed && !res.writableEnded && !res.destroyed) {
-      res.write(' ');
-    }
-  }, 1200);
+    safeWriteChunk('    ');
+  }, 350);
 
   const keepAliveTimer = setInterval(() => {
     if (closed || res.writableEnded || res.destroyed) return;
     flushKeepAliveHeaders();
-    res.write(' ');
-  }, 2500);
+    safeWriteChunk('    ');
+  }, 1500);
 
   const onClose = () => {
     closed = true;
     clearTimeout(initialFlushTimer);
     clearInterval(keepAliveTimer);
+    abortController.abort();
   };
   res.on('close', onClose);
 
   try {
-    const payload = await fn();
+    const payload = await fn(abortController.signal);
     clearTimeout(initialFlushTimer);
     clearInterval(keepAliveTimer);
     res.off('close', onClose);
@@ -738,7 +811,11 @@ async function runJsonWithKeepAlive(
     if (closed || res.writableEnded || res.destroyed) return;
     const { status, error } = formatErrorResponse(err);
     if (headersFlushed) {
-      res.end(JSON.stringify({ error }));
+      try {
+        res.end(JSON.stringify({ error }));
+      } catch {
+        // Socket already closed
+      }
     } else {
       res.status(status).json({ error });
     }
@@ -826,7 +903,7 @@ function formatServerCalendarLabel(
 }
 
   app.post('/api/generate-initial-briefing', async (req, res) => {
-    await runJsonWithKeepAlive(res, async () => {
+    await runJsonWithKeepAlive(res, async (signal) => {
       const { profile, customPremise } = req.body || {};
       const ai = getAIClient();
       const partyLabel = resolvePartyLabel(profile);
@@ -894,19 +971,25 @@ Return a single JSON object matching this exact shape (keep prose crisp, 1-2 sen
   }
 }`;
 
-      return await withRetry(async () => {
-        const response = await ai.models.generateContent({
-          model: MODEL_NAME,
-          contents: prompt,
-          config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-            systemInstruction:
-              'You are a grounded, non-partisan political, military, and macroeconomic simulation engine. Return valid JSON only.',
-            responseMimeType: 'application/json',
-          },
-        });
-        return normalizeInitialBriefingResponse(parseGeminiJson(response.text));
-      });
+      return await withRetry(
+        async (attemptSignal) => {
+          const response = await ai.models.generateContent({
+            model: MODEL_NAME,
+            contents: prompt,
+            config: {
+              abortSignal: attemptSignal,
+              maxOutputTokens: 4096,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+              systemInstruction:
+                'You are a grounded, non-partisan political, military, and macroeconomic simulation engine. Return valid JSON only.',
+              responseMimeType: 'application/json',
+            },
+          });
+          return normalizeInitialBriefingResponse(parseGeminiJson(response.text));
+        },
+        1,
+        signal
+      );
     });
   });
 
@@ -1217,7 +1300,7 @@ Generate a realistic military nominee and evaluate how the Senate Armed Services
       });
     }
 
-    await runJsonWithKeepAlive(res, async () => {
+    await runJsonWithKeepAlive(res, async (signal) => {
       const ai = getAIClient();
       const isMidterm = currentMonth === 24 && profile?.termLength === 48;
       const isFinalMonth = currentMonth >= (profile?.termLength || 48);
@@ -1431,29 +1514,35 @@ Return ONLY a single JSON object matching this exact schema:
   }
 }`;
 
-      return await withRetry(async () => {
-        const response = await ai.models.generateContent({
-          model: MODEL_NAME,
-          contents: prompt,
-          config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-            systemInstruction:
-              'You are the simulation engine for Executive Term, a political, economic, cabinet, and military simulator. Always include both "outcome" and "nextBriefing" (with exactly 3 complete "suggestedDirectives" staff option memos) in a single valid JSON object.',
-            responseMimeType: 'application/json',
-          },
-        });
-        return normalizeTurnResponse(
-          parseGeminiJson(response.text),
-          currentMonth,
-          scandalTarget
-            ? {
-                id: scandalTarget.id,
-                name: scandalTarget.name,
-                roleTitle: scandalTarget.roleTitle,
-              }
-            : null
-        );
-      });
+      return await withRetry(
+        async (attemptSignal) => {
+          const response = await ai.models.generateContent({
+            model: MODEL_NAME,
+            contents: prompt,
+            config: {
+              abortSignal: attemptSignal,
+              maxOutputTokens: 4096,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+              systemInstruction:
+                'You are the simulation engine for Executive Term, a political, economic, cabinet, and military simulator. Always include both "outcome" and "nextBriefing" (with exactly 3 complete "suggestedDirectives" staff option memos) in a single valid JSON object.',
+              responseMimeType: 'application/json',
+            },
+          });
+          return normalizeTurnResponse(
+            parseGeminiJson(response.text),
+            currentMonth,
+            scandalTarget
+              ? {
+                  id: scandalTarget.id,
+                  name: scandalTarget.name,
+                  roleTitle: scandalTarget.roleTitle,
+                }
+              : null
+          );
+        },
+        1,
+        signal
+      );
     });
   });
 
@@ -1471,6 +1560,7 @@ Return ONLY a single JSON object matching this exact schema:
 
       const keyTurns = Array.isArray(history)
         ? history
+            .slice(-28)
             .map(
               (h: {
                 month: number;
@@ -1571,6 +1661,7 @@ Produce a historical letter grade (A+, A, A-, B+, B, B-, C+, C, D, or F), an aut
 
       const timeline = Array.isArray(history)
         ? history
+            .slice(-28)
             .map(
               (h: {
                 month: number;
@@ -1584,6 +1675,7 @@ Produce a historical letter grade (A+, A, A-, B+, B, B-, C+, C, D, or F), an aut
 
       const bills = Array.isArray(legislativeRecords)
         ? legislativeRecords
+            .slice(-20)
             .map(
               (r: {
                 month: number;
@@ -3681,9 +3773,12 @@ Return ONLY valid JSON:
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Executive Term server listening on http://0.0.0.0:${PORT}`);
   });
-  server.requestTimeout = 120000;
-  server.headersTimeout = 65000;
+  server.requestTimeout = 180000;
   server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+  server.on('error', (err) => {
+    console.error('[Executive Term Server Error]', err);
+  });
 }
 
 createApp().catch((err) => {

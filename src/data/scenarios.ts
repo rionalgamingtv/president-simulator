@@ -672,6 +672,142 @@ export const MILITARY_OPERATIONS_PRESET: Record<string, MilitaryCommandState> = 
       },
     ],
   },
+  cyber_grid_blackout: {
+    jointChiefsChair: {
+      name: JOINT_CHIEFS_CANDIDATES[0].name,
+      branch: JOINT_CHIEFS_CANDIDATES[0].branch,
+      doctrine: JOINT_CHIEFS_CANDIDATES[0].leaning,
+    },
+    defconLevel: 3,
+    forceReadiness: 85,
+    defenseBudgetBillions: 945,
+    cyberPosture: 'Active Shield',
+    intelThreatLevel: 'Severe',
+    intelSummary:
+      'State-sponsored wipers hit regional substation controllers alongside suspicious trawler activity above transatlantic fiber cables and orbital ASAT maneuvering.',
+    operations: [
+      {
+        id: 'op-cyber-shield',
+        name: 'CYBERCOM Hunt Forward Grid Shield',
+        region: 'CONUS & Allied Substations',
+        posture: 'Cyber Defense',
+        personnelCount: '6,800 cyber operators',
+        statusNote:
+          'Deploying emergency ICS patches across Eastern and Western Interconnect power grids.',
+      },
+      {
+        id: 'op-orbital-watch',
+        name: 'Space Domain & Undersea Cable Patrol',
+        region: 'North Atlantic & LEO Orbit',
+        posture: 'Deterrence',
+        personnelCount: '11,200 naval & Space Force staff',
+        statusNote:
+          'Tracking adversary rendezvous satellites and guarding transatlantic subsea trunk cables.',
+      },
+    ],
+  },
+  pandemic_supply_shock: {
+    jointChiefsChair: {
+      name: JOINT_CHIEFS_CANDIDATES[0].name,
+      branch: JOINT_CHIEFS_CANDIDATES[0].branch,
+      doctrine: JOINT_CHIEFS_CANDIDATES[0].leaning,
+    },
+    defconLevel: 4,
+    forceReadiness: 81,
+    defenseBudgetBillions: 902,
+    cyberPosture: 'Elevated',
+    intelThreatLevel: 'High',
+    intelSummary:
+      'Novel respiratory outbreak closes major Asian manufacturing ports while foreign export bans choke domestic antibiotic and medical-PPE reserves.',
+    operations: [
+      {
+        id: 'op-medical-airbridge',
+        name: 'TRANSCOM Strategic Medical Airbridge',
+        region: 'Indo-Pacific & CONUS Hubs',
+        posture: 'Humanitarian',
+        personnelCount: '14,500 airlift & medical guard',
+        statusNote:
+          'Operating round-the-clock C-17 flights moving diagnostics, oxygen concentrators, and reagents.',
+      },
+      {
+        id: 'op-quarantine-maritime',
+        name: 'Coast Guard Port Biosecurity Screening',
+        region: 'Pacific & Atlantic Gateways',
+        posture: 'Standby',
+        personnelCount: '7,200 Coast Guard personnel',
+        statusNote:
+          'Prioritizing essential pharmaceuticals and perishable agricultural cargoes at major ports.',
+      },
+    ],
+  },
+  populist_tariff_reset: {
+    jointChiefsChair: {
+      name: JOINT_CHIEFS_CANDIDATES[0].name,
+      branch: JOINT_CHIEFS_CANDIDATES[0].branch,
+      doctrine: JOINT_CHIEFS_CANDIDATES[0].leaning,
+    },
+    defconLevel: 4,
+    forceReadiness: 84,
+    defenseBudgetBillions: 910,
+    cyberPosture: 'Elevated',
+    intelThreatLevel: 'Elevated',
+    intelSummary:
+      'Retaliatory agricultural tariffs and rare-earth export licensing escalate commercial friction across Europe, Mexico, and East Asia.',
+    operations: [
+      {
+        id: 'op-customs-border',
+        name: 'Joint Customs & Maritime Interdiction',
+        region: 'North American Ports & Border',
+        posture: 'Standby',
+        personnelCount: '8,400 Guard & maritime support',
+        statusNote:
+          'Enforcing tariff origin rules and transshipment inspections at major freight corridors.',
+      },
+      {
+        id: 'op-pacific-trade-lane',
+        name: 'Seventh Fleet Trade Corridor Watch',
+        region: 'Western Pacific',
+        posture: 'Deterrence',
+        personnelCount: '16,500 sailors & marines',
+        statusNote:
+          'Ensuring allied commercial shipping lanes stay open amid tense bilateral trade talks.',
+      },
+    ],
+  },
+  housing_healthcare_crunch: {
+    jointChiefsChair: {
+      name: JOINT_CHIEFS_CANDIDATES[0].name,
+      branch: JOINT_CHIEFS_CANDIDATES[0].branch,
+      doctrine: JOINT_CHIEFS_CANDIDATES[0].leaning,
+    },
+    defconLevel: 4,
+    forceReadiness: 83,
+    defenseBudgetBillions: 878,
+    cyberPosture: 'Normal',
+    intelThreatLevel: 'Guarded',
+    intelSummary:
+      'Domestic cost-of-living turbulence dominates public sentiment while Pentagon recruitment lags amid high civilian service wages and housing costs near bases.',
+    operations: [
+      {
+        id: 'op-base-housing',
+        name: 'CONUS Military Readiness & Family Support',
+        region: 'Domestic Installations',
+        posture: 'Standby',
+        personnelCount: '12,000 logistics & engineers',
+        statusNote:
+          'Addressing base barracks modernization and BAH housing allowance shortfalls.',
+      },
+      {
+        id: 'op-hospital-cyber',
+        name: 'Healthcare Network Resilience Watch',
+        region: 'CONUS Hospital Systems',
+        posture: 'Cyber Defense',
+        personnelCount: '1,900 cyber specialists',
+        statusNote:
+          'Hardening rural hospital billing and EHR networks against ransomware disruptions.',
+      },
+    ],
+  },
 };
 
 export const INSTITUTIONS_PRESET: Record<string, InstitutionalState> = {
@@ -746,6 +882,42 @@ export const INSTITUTIONS_PRESET: Record<string, InstitutionalState> = {
     judiciaryClimate: 'Split',
     pendingCourtNote:
       'Constitutional challenge pending over executive impoundment authority and automatic sequestration caps.',
+  },
+  cyber_grid_blackout: {
+    fedFundsRate: 4.5,
+    fedStance: 'Neutral',
+    fedChairNote:
+      'Federal Reserve activates emergency interbank settlement backups after brief regional power-grid flickers disrupt clearing hubs.',
+    judiciaryClimate: 'Favorable',
+    pendingCourtNote:
+      'Courts review mandatory federal cybersecurity reporting rules for private utility and cloud operators.',
+  },
+  pandemic_supply_shock: {
+    fedFundsRate: 2.25,
+    fedStance: 'Accommodative',
+    fedChairNote:
+      'Fed slashes emergency policy rates and opens commercial-paper liquidity lines to keep hospitals and small employers afloat.',
+    judiciaryClimate: 'Split',
+    pendingCourtNote:
+      'Appeals courts weigh executive quarantine, vaccine procurement, and interstate commerce emergency authorities.',
+  },
+  populist_tariff_reset: {
+    fedFundsRate: 5.0,
+    fedStance: 'Hawkish',
+    fedChairNote:
+      'Central bank warns universal import tariffs could create a one-time consumer price bump requiring careful rate patience.',
+    judiciaryClimate: 'Split',
+    pendingCourtNote:
+      'Trade court lawsuits challenge broad unilateral tariff proclamations under Section 232 and IEEPA.',
+  },
+  housing_healthcare_crunch: {
+    fedFundsRate: 4.75,
+    fedStance: 'Neutral',
+    fedChairNote:
+      'Fed notes sticky shelter and medical-services inflation keeps long-term mortgage rates uncomfortably elevated.',
+    judiciaryClimate: 'Split',
+    pendingCourtNote:
+      'Federal panels review executive drug-price negotiation schedules and federal zoning incentive conditions.',
   },
 };
 
@@ -1610,6 +1782,438 @@ export const SCENARIOS: ScenarioDefinition[] = [
             'Mandate line-by-line Pentagon procurement audits to eliminate $45B in duplicate legacy systems and negotiate 25% higher allied base-support contributions in Europe and East Asia.',
           speechDraft:
             'Every taxpayer dollar—from domestic agencies to Pentagon contractors—must deliver measurable results, and our wealthiest allies must carry their fair share.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'cyber_grid_blackout',
+    title: 'Cyber & Space Deterrence',
+    subtitle: 'Substation wipers, subsea cable cuts, and orbital ASAT alerts',
+    eraLabel: 'Gray-Zone Conflict · Critical Infrastructure',
+    climateCategory: 'geopolitics_crisis',
+    description:
+      'Rolling blackouts briefly darken three regional utilities after coordinated malware probes while suspicious ships hover over transatlantic cables and rival satellites shadow U.S. GPS craft.',
+    imageUrl: '/src/assets/images/scenario_cyber_space_1795553354759.jpg',
+    initialMetrics: {
+      approval: 49,
+      congressSupport: 54,
+      gdpGrowth: 2.0,
+      inflation: 3.0,
+      unemployment: 4.2,
+      diplomaticStanding: 58,
+      nationalDebtTrillions: 36.6,
+      houseSeats: 224,
+      senateSeats: 51,
+    },
+    initialBlocs: {
+      workingClass: 48,
+      suburbanModerates: 51,
+      techFinance: 46,
+      seniors: 50,
+      youngVoters: 49,
+    },
+    initialCabinet: DEFAULT_CABINET,
+    initialMilitary: MILITARY_OPERATIONS_PRESET.cyber_grid_blackout,
+    initialInstitutions: INSTITUTIONS_PRESET.cyber_grid_blackout,
+    initialNews: [
+      {
+        id: 'n-cyber-1',
+        month: 1,
+        outlet: 'Defense Capitol Dispatch',
+        category: 'defense',
+        headline: 'CYBERCOM Isolates Foreign Substation Malware After Tri-State Voltage Drop',
+        summary: 'Grid operators restore full service within four hours as FBI and NSA trace command servers.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-cyber-2',
+        month: 1,
+        outlet: 'Global Wire Bureau',
+        category: 'foreign',
+        headline: 'Two Transatlantic Fiber Trunks Severed Near Mid-Atlantic Ridge',
+        summary: 'Financial traffic reroutes cleanly, but NATO naval patrols rush to track shadow salvage vessels.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-cyber-3',
+        month: 1,
+        outlet: 'Aerospace & Space Watch',
+        category: 'defense',
+        headline: 'Space Force Flags Close-Approach Maneuvers Near Military Relay Orbit',
+        summary: 'Pentagon leaders debate proportional cyber retaliation versus public diplomatic attribution.',
+        tone: 'neutral',
+      },
+      {
+        id: 'n-cyber-4',
+        month: 1,
+        outlet: 'Wall Street Cyber Wire',
+        category: 'economy',
+        headline: 'Cloud & Utility Equities Slip 2.8% Amid Calls for Mandatory Zero-Trust Standards',
+        summary: 'Private sector warns compliance mandates need liability safe harbors.',
+        tone: 'neutral',
+      },
+    ],
+    initialBriefing: {
+      title: 'Gray-Zone Escalation: Power Grid Intrusion & Orbital Shadowing',
+      situationSummary:
+        'A coordinated gray-zone campaign has probed regional electric substations, severed two transatlantic fiber-optic cables, and positioned maneuverable satellites near U.S. defense relays. Congress is demanding swift deterrence without sparking an uncontrolled kinetic war.',
+      domesticIssue:
+        'State governors and private utilities resist costly cybersecurity overhauls unless Congress pairs mandates with liability protections.',
+      economicIssue:
+        'Financial clearing houses and cloud insurers warn a sustained grid outage could shave 1.5% off quarterly GDP.',
+      foreignIssue:
+        'NATO and Five Eyes partners want joint attribution and visible naval-space deterrence without crossing into open missile exchange.',
+      urgentDilemma:
+        'Will you authorize proportionate covert CYBERCOM counter-strikes and mandatory utility hardening, or seek an emergency de-escalation hotline with rival capitals?',
+      suggestedDirectives: [
+        {
+          role: 'NSA & Defense Secretary',
+          title: 'Proportional Cyber Deterrence & Grid Resilience Act',
+          policyDraft:
+            'Authorize targeted CYBERCOM Hunt Forward counter-operations against adversary proxy infrastructure while submitting a bipartisan Critical Infrastructure Cybersecurity Act with utility hardening grants.',
+          speechDraft:
+            'Those who target American power grids and undersea lifelines will learn that anonymity is no longer a shield.',
+        },
+        {
+          role: 'Secretary of State',
+          title: 'NATO Subsea Protection & Orbital Norms Pact',
+          policyDraft:
+            'Convene an emergency NATO-Five Eyes maritime task force to patrol subsea cable corridors and propose verifiable orbital keep-out zones at the UN.',
+          speechDraft:
+            'Protecting the cables under our oceans and the satellites above our skies is a shared covenant among free nations.',
+        },
+        {
+          role: 'Treasury & Homeland Security',
+          title: 'Cyber Insurance Backstop & Cloud Liability Shield',
+          policyDraft:
+            'Create a temporary federal catastrophic cyber-reinsurance facility for utilities and regional banks that adopt zero-trust hardware isolation.',
+          speechDraft:
+            'Stronger defenses at every substation and bank clearing house keep Main Street lights on and markets steady.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'pandemic_supply_shock',
+    title: 'Biosecurity & Supply Freeze',
+    subtitle: 'Cross-border outbreak, medical shortages, and port slowdowns',
+    eraLabel: 'Public Health Alert · Supply Shock',
+    climateCategory: 'geopolitics_crisis',
+    description:
+      'A fast-spreading novel respiratory pathogen has closed major overseas factories and triggered export bans on active pharmaceutical ingredients, testing emergency health coordination and economic calm.',
+    imageUrl: '/src/assets/images/scenario_biosecurity_supply_1795553355256.jpg',
+    initialMetrics: {
+      approval: 50,
+      congressSupport: 55,
+      gdpGrowth: 0.4,
+      inflation: 4.3,
+      unemployment: 5.1,
+      diplomaticStanding: 60,
+      nationalDebtTrillions: 37.1,
+      houseSeats: 219,
+      senateSeats: 50,
+    },
+    initialBlocs: {
+      workingClass: 49,
+      suburbanModerates: 52,
+      techFinance: 47,
+      seniors: 48,
+      youngVoters: 53,
+    },
+    initialCabinet: DEFAULT_CABINET,
+    initialMilitary: MILITARY_OPERATIONS_PRESET.pandemic_supply_shock,
+    initialInstitutions: INSTITUTIONS_PRESET.pandemic_supply_shock,
+    initialNews: [
+      {
+        id: 'n-bio-1',
+        month: 1,
+        outlet: 'Associated Press Wire',
+        category: 'domestic',
+        headline: 'CDC & WHO Track Clusters Across Three Continents as Hospitals Stockpile',
+        summary: 'Public health officials stress targeted screening and rapid antiviral manufacturing over blunt lockdowns.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-bio-2',
+        month: 1,
+        outlet: 'Commerce & Supply Wire',
+        category: 'economy',
+        headline: 'Generic Antibiotic & Sterile Vial Shipments Slow Amid Foreign Export Curbs',
+        summary: 'Hospital groups urge immediate Defense Production Act contracts for domestic pharma plants.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-bio-3',
+        month: 1,
+        outlet: 'Financial Ledger',
+        category: 'economy',
+        headline: 'Airlines and Hospitality Shares Dip as Business Travel Cools',
+        summary: 'Fed emergency liquidity signals calm bond desks while service employers seek bridge loans.',
+        tone: 'neutral',
+      },
+      {
+        id: 'n-bio-4',
+        month: 1,
+        outlet: 'Capitol Dispatch',
+        category: 'politics',
+        headline: 'Governors Split Sharply on Quarantine Guidance vs. Keeping Main Streets Open',
+        summary: 'Congress weighs bipartisan vaccine-sprint funding paired with small-business payroll relief.',
+        tone: 'neutral',
+      },
+    ],
+    initialBriefing: {
+      title: 'Biosecurity Alert: Medical Supply Bottleneck & Targeted Containment',
+      situationSummary:
+        'Overseas factory quarantines and foreign medical export restrictions have squeezed hospital stocks of generic antibiotics and diagnostic reagents. Governors and markets are watching whether the White House chooses precision medical mobilization or sweeping restrictions.',
+      domesticIssue:
+        'Hospital networks report regional shortages of sterile consumables while governors warn against blanket school or small-business closures.',
+      economicIssue:
+        'Cooling travel and dining demand pulled GDP growth down to 0.4% while supply bottlenecks lifted goods inflation to 4.3%.',
+      foreignIssue:
+        'Allies are competing for scarce vaccine precursors, creating pressure for transparent reciprocal medical trade corridors.',
+      urgentDilemma:
+        'Will you invoke the Defense Production Act for domestic pharma manufacturing and rapid mRNA/antiviral sprints while keeping commerce open, or tighten national travel and quarantine controls?',
+      suggestedDirectives: [
+        {
+          role: 'Health & Defense Logistics',
+          title: 'Operation Rapid Shield: DPA Pharma & Vaccine Sprint',
+          policyDraft:
+            'Invoke Defense Production Act priority contracts to expand U.S. sterile vial, PPE, and generic antibiotic plants while launching a public-private rapid antiviral and next-gen vaccine platform.',
+          speechDraft:
+            'America will never be caught dependent on foreign chokepoints for life-saving medicine. We are mobilizing our labs and factories today while keeping schools and Main Street safely open.',
+        },
+        {
+          role: 'Treasury & Labor',
+          title: 'Targeted Small-Business Sick-Leave & Payroll Bridge',
+          policyDraft:
+            'Establish temporary refundable tax credits for small employers offering paid isolation leave alongside Fed commercial-paper liquidity lines for regional clinics and airlines.',
+          speechDraft:
+            'Nobody should have to choose between paying rent and staying home when sick—we are keeping workers healthy and businesses solvent.',
+        },
+        {
+          role: 'Secretary of State',
+          title: 'Allied Medical Trade & Genomic Data Compact',
+          policyDraft:
+            'Negotiate reciprocal zero-tariff medical supply corridors with Canada, the EU, Japan, and India in exchange for real-time viral sequencing transparency.',
+          speechDraft:
+            'Viruses respect no borders, and defeating them requires open science and trusted supply partnerships among allies.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'populist_tariff_reset',
+    title: 'Tariff & Reshoring Mandate',
+    subtitle: 'Border duties, Rust Belt revival, and retaliatory trade wars',
+    eraLabel: 'Trade Reset · Industrial Heartland',
+    climateCategory: 'governance_fiscal',
+    description:
+      'Voters backed sweeping protectionist pledges to rebuild domestic factories, yet steep across-the-board tariffs risk triggering retaliatory farm boycotts, higher consumer prices, and allied friction.',
+    imageUrl: '/src/assets/images/scenario_tariff_reshoring_1795553354932.jpg',
+    initialMetrics: {
+      approval: 48,
+      congressSupport: 46,
+      gdpGrowth: 1.9,
+      inflation: 3.9,
+      unemployment: 3.8,
+      diplomaticStanding: 51,
+      nationalDebtTrillions: 36.8,
+      houseSeats: 221,
+      senateSeats: 51,
+    },
+    initialBlocs: {
+      workingClass: 61,
+      suburbanModerates: 44,
+      techFinance: 39,
+      seniors: 49,
+      youngVoters: 46,
+    },
+    initialCabinet: DEFAULT_CABINET,
+    initialMilitary: MILITARY_OPERATIONS_PRESET.populist_tariff_reset,
+    initialInstitutions: INSTITUTIONS_PRESET.populist_tariff_reset,
+    initialNews: [
+      {
+        id: 'n-tar-1',
+        month: 1,
+        outlet: 'Midwest Manufacturing Wire',
+        category: 'economy',
+        headline: 'Steel & Appliance Unions Back Aggressive Import Duties on Subsidized Goods',
+        summary: 'Ohio and Pennsylvania plant towns urge swift action against foreign industrial dumping.',
+        tone: 'positive',
+      },
+      {
+        id: 'n-tar-2',
+        month: 1,
+        outlet: 'Farm Belt Ledger',
+        category: 'economy',
+        headline: 'Soybean & Pork Exporters Brace for Retaliatory Tariffs in Asia and Europe',
+        summary: 'Rural senators press White House for bilateral export carve-outs before planting season.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-tar-3',
+        month: 1,
+        outlet: 'Financial Times Wire',
+        category: 'foreign',
+        headline: 'Brussels and Ottawa Warn Universal Tariffs Could Fracture Allied Supply Pacts',
+        summary: 'Trade ministers request targeted China-focused coordination instead of blanket levies.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-tar-4',
+        month: 1,
+        outlet: 'Retail & Consumer Desk',
+        category: 'domestic',
+        headline: 'Big-Box Retailers Warn Broad Duties Could Lift Household Prices by 1.2%',
+        summary: 'Economists debate whether corporate tax cuts offset import price pressures.',
+        tone: 'neutral',
+      },
+    ],
+    initialBriefing: {
+      title: 'Trade Reset: Heartland Reshoring vs. Retaliatory Inflation',
+      situationSummary:
+        'Industrial-belt voters expect decisive action against offshoring and subsidized imports, while farmers, retailers, and treaty allies warn that universal tariffs will ignite costly retaliation and lift consumer CPI above 4.5%.',
+      domesticIssue:
+        'Farm-state lawmakers threaten to stall your legislative agenda if retaliatory export boycotts hit grain and livestock shipments.',
+      economicIssue:
+        'With unemployment low at 3.8% and inflation at 3.9%, broad import duties risk provoking hawkish Fed rate hikes.',
+      foreignIssue:
+        'Allied capitals offer coordinated tariffs on non-market overcapacity if exempted from blanket U.S. border duties.',
+      urgentDilemma:
+        'Will you impose sweeping universal tariffs to maximize negotiating leverage, or build a surgical "Friend-Shoring" tariff wall targeting strategic rivals while shielding allies and consumers?',
+      suggestedDirectives: [
+        {
+          role: 'Treasury & USTR',
+          title: 'Surgical Strategic Tariffs & Allied Friend-Shoring',
+          policyDraft:
+            'Impose steep 45–60% duties strictly on strategic adversary EVs, steel, solar wafers, and legacy chips while exempting treaty allies that match North American labor and anti-dumping standards.',
+          speechDraft:
+            'We are ending the era of naive offshoring—rewarding trusted allies who play fair while shutting out state-subsidized dumping.',
+        },
+        {
+          role: 'Commerce & Populist Council',
+          title: 'Universal 15% Baseline Tariff & Factory Expensing',
+          policyDraft:
+            'Enact a sweeping 15% baseline import tariff paired with 100% immediate domestic factory-equipment tax expensing and an emergency farm export stabilization reserve.',
+          speechDraft:
+            'If you want to sell to the American consumer without paying a tariff, build your factory and hire American workers right here in the United States.',
+        },
+        {
+          role: 'Labor & Agriculture Secretaries',
+          title: 'Heartland Apprenticeships & Bilateral Ag Access',
+          policyDraft:
+            'Channel tariff revenues directly into Midwest vocational apprenticeships and negotiate fast-track beef, LNG, and soybean purchase commitments with Indo-Pacific partners.',
+          speechDraft:
+            'Trade policy only succeeds when both factory floors and family farms thrive together.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'housing_healthcare_crunch',
+    title: 'Affordability & Entitlement Squeeze',
+    subtitle: '7% mortgages, housing gridlock, and hospital consolidation',
+    eraLabel: 'Kitchen-Table Squeeze · Cost of Living',
+    climateCategory: 'governance_fiscal',
+    description:
+      'Macro headlines show steady hiring, yet young families are locked out of starter homes by zoning bottlenecks and 7% mortgages while medical premiums devour household paychecks.',
+    imageUrl: '/src/assets/images/scenario_housing_healthcare_1795553355586.jpg',
+    initialMetrics: {
+      approval: 47,
+      congressSupport: 48,
+      gdpGrowth: 2.1,
+      inflation: 3.4,
+      unemployment: 4.0,
+      diplomaticStanding: 64,
+      nationalDebtTrillions: 36.4,
+      houseSeats: 215,
+      senateSeats: 50,
+    },
+    initialBlocs: {
+      workingClass: 45,
+      suburbanModerates: 49,
+      techFinance: 52,
+      seniors: 46,
+      youngVoters: 41,
+    },
+    initialCabinet: DEFAULT_CABINET,
+    initialMilitary: MILITARY_OPERATIONS_PRESET.housing_healthcare_crunch,
+    initialInstitutions: INSTITUTIONS_PRESET.housing_healthcare_crunch,
+    initialNews: [
+      {
+        id: 'n-aff-1',
+        month: 1,
+        outlet: 'Civic Housing Ledger',
+        category: 'economy',
+        headline: 'First-Time Homebuyer Median Age Reaches Record High Amid 4M Unit Deficit',
+        summary: 'Mayors and builders clash over single-family zoning rules and federal transit infrastructure strings.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-aff-2',
+        month: 1,
+        outlet: 'Health Policy Monitor',
+        category: 'domestic',
+        headline: 'Hospital Chains Announce 9% Premium Jump as Rural Clinics Trim Wards',
+        summary: 'Bipartisan senators investigate pharmacy middlemen and consolidated regional hospital pricing.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-aff-3',
+        month: 1,
+        outlet: 'Youth & Campus Dispatch',
+        category: 'politics',
+        headline: 'Voters Under 35 Cite Rent and Childcare Ahead of Partisan Loyalty',
+        summary: 'Suburban counties demand tangible cost-of-living relief without fueling inflation.',
+        tone: 'neutral',
+      },
+      {
+        id: 'n-aff-4',
+        month: 1,
+        outlet: 'Bond & Mortgage Wire',
+        category: 'economy',
+        headline: 'Economists Warn Down-Payment Grants Without Supply Reform Only Raise Home Prices',
+        summary: 'Treasury advisors push supply-side construction incentives paired with PBM transparency.',
+        tone: 'neutral',
+      },
+    ],
+    initialBriefing: {
+      title: 'Kitchen-Table Crisis: Starter-Home Gridlock & Medical Cost Surge',
+      situationSummary:
+        'Despite solid headline jobs numbers, a four-million-home supply shortfall and soaring family health insurance premiums have pushed approval among young and working-class voters to multi-year lows. Pure cash handouts risk reigniting shelter inflation unless paired with real supply reform.',
+      domesticIssue:
+        'Suburban NIMBY resistance collides with bipartisan bills tying federal transit grants to duplex, townhome, and ADU permitting reform.',
+      economicIssue:
+        'Shelter and medical inflation account for nearly 70% of core CPI persistence, delaying Federal Reserve rate relief.',
+      foreignIssue:
+        'Building-material tariffs and active-ingredient drug import bottlenecks raise domestic construction and prescription costs.',
+      urgentDilemma:
+        'Do you champion supply-side zoning preemption and hospital/PBM antitrust reform, or deliver immediate buyer tax credits and federal rent caps?',
+      suggestedDirectives: [
+        {
+          role: 'Housing & Treasury Secretaries',
+          title: 'Supply-First Housing Boom & Transit Zoning Compact',
+          policyDraft:
+            'Condition federal highway and transit grants on municipal multi-family and accessory-dwelling permitting reform, release surplus federal land for starter homes, and expand Low-Income Housing Tax Credits.',
+          speechDraft:
+            'The only lasting cure for soaring home prices is to build millions more starter homes so young families can finally own a piece of the American dream.',
+        },
+        {
+          role: 'Health & Antitrust Counsel',
+          title: 'PBM Transparency & Site-Neutral Hospital Pricing Act',
+          policyDraft:
+            'End pharmacy-benefit-manager spread pricing, enforce site-neutral Medicare/private outpatient billing, and accelerate generic drug approvals while reinforcing rural hospital stabilization funds.',
+          speechDraft:
+            'Families deserve honest medical billing—not hidden middleman markups and surprise hospital fees.',
+        },
+        {
+          role: 'Domestic Economic Council',
+          title: 'Childcare Tax Credit & Construction Apprenticeship Push',
+          policyDraft:
+            'Restore an expanded working-family child tax credit offset by closing real-estate depreciation loopholes for mega-corporate single-family landlords, while funding 100,000 skilled trades slots.',
+          speechDraft:
+            'Main Street homes belong to families raising kids, not Wall Street institutional flippers.',
         },
       ],
     },

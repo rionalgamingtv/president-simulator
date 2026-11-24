@@ -1634,4 +1634,656 @@ export const HISTORICAL_SCENARIOS: ScenarioDefinition[] = [
       ],
     },
   },
+  {
+    id: 'hist_1981_reaganomics',
+    title: '1981 · Morning & Supply-Side Reset',
+    subtitle: '10.3% inflation, Kemp-Roth tax cuts, and PATCO standoff',
+    eraLabel: '1981 · Supply-Side & Cold War Turn',
+    historicalEraTag: '1980s Economic & Defense Reset',
+    isHistorical: true,
+    historicalYear: 1981,
+    recommendedPresidentId: 'reagan',
+    historicalBenchmarkNote:
+      'Real-world 1981 benchmark: Passing the Economic Recovery Tax Act (Kemp-Roth 25% income tax cut) with bipartisan Boll Weevil Democrats, backing Fed Chair Volcker’s 19% interest-rate inflation cure, breaking the PATCO air-traffic strike, and launching the peace-through-strength defense buildup.',
+    historicalKeyEvents: [
+      'Kemp-Roth Tax Cuts & Spending Reallocation',
+      'Volcker Tight Money vs. Stagflation',
+      'PATCO Air Traffic Control Strike Showdown',
+    ],
+    description:
+      'Inflation still exceeds 10% while prime interest rates approach 20% and Soviet SS-20 missiles deploy in Europe. Passing sweeping supply-side tax cuts through a Democratic House while backing painful Volcker tightening tests political nerve.',
+    imageUrl: '/src/assets/images/hist_1981_reaganomics_1795553366583.jpg',
+    initialMetrics: {
+      approval: 58,
+      congressSupport: 54,
+      gdpGrowth: 2.5,
+      inflation: 10.3,
+      unemployment: 7.4,
+      diplomaticStanding: 62,
+      nationalDebtTrillions: 0.99,
+      houseSeats: 192,
+      senateSeats: 53,
+    },
+    initialBlocs: {
+      workingClass: 53,
+      suburbanModerates: 61,
+      techFinance: 64,
+      seniors: 56,
+      youngVoters: 49,
+    },
+    initialCabinet: DEFAULT_CABINET,
+    initialMilitary: {
+      defconLevel: 3,
+      forceReadiness: 78,
+      defenseBudgetBillions: 171,
+      cyberPosture: 'Normal',
+      intelThreatLevel: 'High',
+      intelSummary:
+        'Soviet forces remain entrenched in Afghanistan while Warsaw Pact exercises rattle Solidarity-era Poland.',
+      jointChiefsChair: {
+        name: 'Gen. David C. Jones',
+        branch: 'U.S. Air Force',
+        doctrine: 'Strategic Modernization & Peace Through Strength',
+      },
+      operations: [
+        {
+          id: 'op-1981-1',
+          name: 'EUCOM Dual-Track Pershing Watch',
+          region: 'Europe & North Atlantic',
+          posture: 'Deterrence',
+          personnelCount: '315,000',
+          statusNote:
+            'Preparing NATO intermediate-range missile modernization alongside arms-control talks.',
+        },
+        {
+          id: 'op-1981-2',
+          name: 'Sixth Fleet Gulf of Sidra Patrol',
+          region: 'Middle East & Levant',
+          posture: 'Deterrence',
+          personnelCount: '29,000',
+          statusNote:
+            'Asserting freedom-of-navigation rights across contested Mediterranean waters.',
+        },
+      ],
+    },
+    initialInstitutions: {
+      fedFundsRate: 16.5,
+      fedStance: 'Hawkish',
+      fedChairNote:
+        'Fed Chair Paul Volcker holds overnight rates above 16% to break the back of decade-long inflation expectations.',
+      judiciaryClimate: 'Split',
+      pendingCourtNote:
+        'White House prepares first Supreme Court appointment amid major deregulation and labor rulings.',
+    },
+    initialNews: [
+      {
+        id: 'n-1981-1',
+        month: 1,
+        outlet: 'Wall Street Journal',
+        category: 'economy',
+        headline: 'White House Sends Three-Year 25% Tax-Rate Cut to Democratic House',
+        summary:
+          'Treasury argues marginal tax relief will ignite capital investment once inflation cools.',
+        tone: 'neutral',
+      },
+      {
+        id: 'n-1981-2',
+        month: 1,
+        outlet: 'Washington Post',
+        category: 'domestic',
+        headline: 'Air Traffic Controllers Union Threatens Nationwide Walkout Over Pay',
+        summary:
+          'FAA readies military backup controllers as White House weighs strict federal no-strike enforcement.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-1981-3',
+        month: 1,
+        outlet: 'New York Times',
+        category: 'economy',
+        headline: 'Housing Starts Plunge as 16% Fed Funds Rate Squeezes Construction',
+        summary:
+          'Midwest governors urge White House to lean on Volcker for early rate relief.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-1981-4',
+        month: 1,
+        outlet: 'Defense Monitor',
+        category: 'defense',
+        headline: 'Pentagon Seeks B-1 Bomber Revival and 600-Ship Navy Expansion',
+        summary:
+          'Defense hawks argue restoring deterrence requires multi-year procurement growth.',
+        tone: 'neutral',
+      },
+    ],
+    initialBriefing: {
+      title: '1981: Supply-Side Tax Gamble, Volcker Squeeze & PATCO',
+      situationSummary:
+        'You enter the Oval Office facing 10.3% inflation, 16.5% Fed rates squeezing construction, and an opposition House led by Speaker Tip O’Neill. Simultaneously, air traffic controllers threaten an illegal federal strike while defense planners urge rapid Cold War modernization.',
+      domesticIssue:
+        'PATCO air traffic controllers threaten a nationwide airport shutdown unless granted steep wage hikes and shorter hours.',
+      economicIssue:
+        'Passing deep Kemp-Roth income tax cuts while backing Volcker’s tight money risks steep near-term deficits and recession before recovery takes hold.',
+      foreignIssue:
+        'Restoring NATO deterrence against Soviet SS-20 missiles while keeping European allies united behind arms-control leverage.',
+      urgentDilemma:
+        'Will you hold firm behind Kemp-Roth tax cuts, Volcker’s rate discipline, and a 48-hour PATCO back-to-work ultimatum, or compromise with House Democrats and unions to soften short-term pain?',
+      suggestedDirectives: [
+        {
+          role: 'Treasury & Legislative Whip',
+          title: 'Enact Kemp-Roth Tax Cuts & Back Volcker Tightening',
+          policyDraft:
+            'Coalition-whip House conservative Democrats to pass the three-year 25% individual tax reduction and business depreciation overhaul while publicly defending Federal Reserve independence to crush 10% inflation.',
+          speechDraft:
+            'Government is not the solution to our problem; government is the problem. Together we will unleash American enterprise and restore sound money.',
+        },
+        {
+          role: 'Transportation & Labor',
+          title: 'Enforce Federal No-Strike Law on PATCO',
+          policyDraft:
+            'Give striking federal air traffic controllers 48 hours to return to duty under oath, deploy military and supervisory controllers to keep 75% of commercial flights moving, and replace non-compliant strikers.',
+          speechDraft:
+            'There is no strike against the public safety—those who violate their federal oath forfeit their posts.',
+        },
+        {
+          role: 'Pentagon & NSC',
+          title: '600-Ship Navy & Zero-Option INF Deterrence',
+          policyDraft:
+            'Launch multi-year conventional and strategic defense modernization while offering Moscow a "Zero Option" treaty eliminating all intermediate nuclear missiles in Europe.',
+          speechDraft:
+            'Peace comes through unmistakable strength—and credible strength opens the door to real arms reductions.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'hist_1993_clinton_gridlock',
+    title: '1993 · Deficit & NAFTA Crossroads',
+    subtitle: 'Bond vigilantes, razor-thin budget vote, and North American trade',
+    eraLabel: '1993 · Post-Cold War Domestic Pivot',
+    historicalEraTag: '1990s Deficit & Trade Pivot',
+    isHistorical: true,
+    historicalYear: 1993,
+    recommendedPresidentId: 'clinton',
+    historicalBenchmarkNote:
+      'Real-world 1993 benchmark: Choosing a credibility-first deficit-reduction budget passing by Vice President Gore’s tie-break to drop 10-year Treasury yields, forging a bipartisan coalition to ratify NAFTA despite union opposition, and expanding EITC & Brady gun safety.',
+    historicalKeyEvents: [
+      'Tie-Break Deficit Reduction vs. Stimulus',
+      'NAFTA Ratification & Rust Belt Backlash',
+      'Healthcare Reform & Post-Cold War Peacekeeping',
+    ],
+    description:
+      'With the Cold War over and voters demanding an "economy, stupid" focus, soaring deficits frighten bond desks just as your own party’s labor base battles you over NAFTA ratification.',
+    imageUrl: '/src/assets/images/hist_1993_nafta_deficit_1795553367400.jpg',
+    initialMetrics: {
+      approval: 49,
+      congressSupport: 52,
+      gdpGrowth: 2.7,
+      inflation: 3.0,
+      unemployment: 7.1,
+      diplomaticStanding: 75,
+      nationalDebtTrillions: 4.41,
+      houseSeats: 258,
+      senateSeats: 57,
+    },
+    initialBlocs: {
+      workingClass: 54,
+      suburbanModerates: 51,
+      techFinance: 48,
+      seniors: 50,
+      youngVoters: 58,
+    },
+    initialCabinet: DEFAULT_CABINET,
+    initialMilitary: {
+      defconLevel: 5,
+      forceReadiness: 84,
+      defenseBudgetBillions: 291,
+      cyberPosture: 'Normal',
+      intelThreatLevel: 'Elevated',
+      intelSummary:
+        'Balkan ethnic conflict and Somalia humanitarian operations test post-Cold War peacekeeping limits amid domestic base closures.',
+      jointChiefsChair: {
+        name: 'Gen. John Shalikashvili',
+        branch: 'U.S. Army',
+        doctrine: 'Base Force Drawdown & Multilateral Peacekeeping',
+      },
+      operations: [
+        {
+          id: 'op-1993-1',
+          name: 'Operation Provide Promise & Adriatic Watch',
+          region: 'Europe & North Atlantic',
+          posture: 'Humanitarian',
+          personnelCount: '22,000',
+          statusNote:
+            'Airlifting relief into Sarajevo while enforcing UN no-fly restrictions.',
+        },
+        {
+          id: 'op-1993-2',
+          name: 'Somalia UNOSOM Logistics',
+          region: 'Sub-Saharan Africa',
+          posture: 'Humanitarian',
+          personnelCount: '18,000',
+          statusNote:
+            'Securing port relief convoys amid rising Mogadishu faction clashes.',
+        },
+      ],
+    },
+    initialInstitutions: {
+      fedFundsRate: 3.0,
+      fedStance: 'Neutral',
+      fedChairNote:
+        'Fed Chair Alan Greenspan signals privately that credible multi-year deficit reduction will allow long-term interest rates to fall sharply.',
+      judiciaryClimate: 'Split',
+      pendingCourtNote:
+        'Centrist Supreme Court coalition open to federal commerce and civil rights statutes.',
+    },
+    initialNews: [
+      {
+        id: 'n-1993-1',
+        month: 1,
+        outlet: 'Wall Street Journal',
+        category: 'economy',
+        headline: 'Bond Traders Warn Stimulus Spending Without Deficit Cuts Will Spike Yields',
+        summary:
+          'Treasury advisors urge scrapping middle-class tax cuts in favor of a $500B deficit plan.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-1993-2',
+        month: 1,
+        outlet: 'Detroit Free Press',
+        category: 'politics',
+        headline: 'Industrial Unions Mobilize Fiercely Against NAFTA Ratification Vote',
+        summary:
+          'House Democratic whips warn White House must rely on Republican votes to pass trade pact.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-1993-3',
+        month: 1,
+        outlet: 'Washington Post',
+        category: 'domestic',
+        headline: 'White House Task Force Drafts Sweeping Universal Health Security Plan',
+        summary:
+          'Small-business groups and insurers brace for employer-mandate clash in Congress.',
+        tone: 'neutral',
+      },
+      {
+        id: 'n-1993-4',
+        month: 1,
+        outlet: 'New York Times',
+        category: 'foreign',
+        headline: 'Balkan Siege & Russian Reform Crisis Test Early Foreign Policy Focus',
+        summary:
+          'Allied capitals look for decisive U.S. leadership without open-ended ground quagmires.',
+        tone: 'neutral',
+      },
+    ],
+    initialBriefing: {
+      title: '1993: Bond Market Reckoning, Budget Tie-Break & NAFTA',
+      situationSummary:
+        'Although unemployment sits at 7.1%, Fed Chair Greenspan and Treasury advisors warn that only a bold $500B deficit-reduction budget will bring down 30-year mortgage rates and spark private-sector hiring. Meanwhile, NAFTA ratification forces a painful split with organized labor.',
+      domesticIssue:
+        'Should you invest maximum political capital in an ambitious universal healthcare overhaul right away, or build incremental bipartisan wins like Family Leave, EITC, and crime/Brady reform?',
+      economicIssue:
+        'Pivoting from campaign stimulus to strict deficit reduction risks angering progressives, while raising upper-bracket taxes guarantees unified GOP opposition.',
+      foreignIssue:
+        'Passing NAFTA with labor/environmental side agreements while calibrating humanitarian deployments in Bosnia and Somalia.',
+      urgentDilemma:
+        'Will you stake your presidency on a disciplined deficit-reduction budget and bipartisan NAFTA passage to unleash low long-term rates, or prioritize union-backed public works stimulus?',
+      suggestedDirectives: [
+        {
+          role: 'Treasury & NEC',
+          title: 'Credibility-First $500B Deficit Reduction & EITC',
+          policyDraft:
+            'Assemble a multi-year $500B deficit-reduction budget pairing modest spending caps and upper-income rate adjustments with an expanded Earned Income Tax Credit to reward working families.',
+          speechDraft:
+            'Cutting the deficit will bring down interest rates, ignite private-sector jobs, and lift millions of working parents out of poverty.',
+        },
+        {
+          role: 'Trade & State Coalition',
+          title: 'Pass NAFTA With Labor & Environmental Side Accords',
+          policyDraft:
+            'Negotiate enforceable labor and environmental side agreements with Mexico and Canada and build a bipartisan House-Senate coalition to ratify NAFTA.',
+          speechDraft:
+            'America cannot retreat behind walls in a global economy—we will compete, export, and write the rules of fair North American trade.',
+        },
+        {
+          role: 'Domestic Policy Council',
+          title: 'Incremental Healthcare Portability & Crime-Brady Accord',
+          policyDraft:
+            'Prioritize bipartisan insurance portability for pre-existing conditions alongside the Brady waiting-period bill and 100,000 community police grants rather than an all-or-nothing overhaul.',
+          speechDraft:
+            'Real progress comes when both parties deliver practical security for families’ healthcare and neighborhoods.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'hist_2020_pandemic',
+    title: '2020 · Pandemic Lockdown & Warp Speed',
+    subtitle: 'COVID-19 emergency, CARES trillions, and vaccine race',
+    eraLabel: 'March 2020 · Global Health Emergency',
+    historicalEraTag: '2020 Pandemic Crucible',
+    isHistorical: true,
+    historicalYear: 2020,
+    recommendedPresidentId: 'trump',
+    historicalBenchmarkNote:
+      'Real-world 2020 benchmark: Launching Operation Warp Speed public-private vaccine acceleration in record months, enacting the $2.2T bipartisan CARES Act (PPP loans & stimulus checks), coordinating Fed emergency credit lines, and managing state-federal reopening tensions.',
+    historicalKeyEvents: [
+      'COVID-19 Shutdowns & Hospital Strain',
+      '$2.2T Bipartisan CARES Act & PPP Loans',
+      'Operation Warp Speed Vaccine Acceleration',
+    ],
+    description:
+      'A novel coronavirus has shut down major cities, sent jobless claims into the millions overnight, and pushed hospitals toward ventilator shortages. Balancing historic emergency liquidity, vaccine sprints, and reopening pressures defines the year.',
+    imageUrl: '/src/assets/images/hist_2020_pandemic_1795553368492.jpg',
+    initialMetrics: {
+      approval: 47,
+      congressSupport: 58,
+      gdpGrowth: -3.4,
+      inflation: 1.4,
+      unemployment: 8.1,
+      diplomaticStanding: 52,
+      nationalDebtTrillions: 23.6,
+      houseSeats: 199,
+      senateSeats: 53,
+    },
+    initialBlocs: {
+      workingClass: 52,
+      suburbanModerates: 44,
+      techFinance: 51,
+      seniors: 49,
+      youngVoters: 38,
+    },
+    initialCabinet: DEFAULT_CABINET,
+    initialMilitary: {
+      defconLevel: 4,
+      forceReadiness: 83,
+      defenseBudgetBillions: 738,
+      cyberPosture: 'Elevated',
+      intelThreatLevel: 'High',
+      intelSummary:
+        'USNS Mercy and Comfort deploy to coastal cities while military readiness adapts to quarantine protocols and global supply freeze.',
+      jointChiefsChair: {
+        name: 'Gen. Mark A. Milley',
+        branch: 'U.S. Army',
+        doctrine: 'Defense Support of Civil Authorities & Deterrence',
+      },
+      operations: [
+        {
+          id: 'op-2020-1',
+          name: 'NORTHCOM Hospital Ships & FEMA Logistics',
+          region: 'North America',
+          posture: 'Humanitarian',
+          personnelCount: '42,000',
+          statusNote:
+            'National Guard testing sites, PPE airlifts, and hospital-ship surge support.',
+        },
+        {
+          id: 'op-2020-2',
+          name: 'Indo-Pacific Deterrence Watch',
+          region: 'Indo-Pacific',
+          posture: 'Deterrence',
+          personnelCount: '58,000',
+          statusNote:
+            'Preserving Pacific carrier readiness under strict crew health bubbles.',
+        },
+      ],
+    },
+    initialInstitutions: {
+      fedFundsRate: 0.25,
+      fedStance: 'Accommodative',
+      fedChairNote:
+        'Fed Chair Jerome Powell cuts rates to 0–0.25% and launches unprecedented corporate, municipal, and Treasury liquidity facilities.',
+      judiciaryClimate: 'Favorable',
+      pendingCourtNote:
+        'Federal courts weigh emergency public health orders alongside religious-liberty and eviction-moratorium challenges.',
+    },
+    initialNews: [
+      {
+        id: 'n-2020-1',
+        month: 1,
+        outlet: 'Associated Press Wire',
+        category: 'domestic',
+        headline: 'Record Weekly Jobless Claims Surge as States Halt Indoor Gatherings',
+        summary:
+          'Main Street restaurants, airlines, and hotels plead for immediate forgivable payroll bridge loans.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-2020-2',
+        month: 1,
+        outlet: 'Wall Street Journal',
+        category: 'economy',
+        headline: 'Congress Races Toward $2.2T Bipartisan CARES Stabilization Package',
+        summary:
+          'Treasury and Senate negotiators align on PPP small-business loans, direct payments, and unemployment boosts.',
+        tone: 'neutral',
+      },
+      {
+        id: 'n-2020-3',
+        month: 1,
+        outlet: 'Science & Bio Wire',
+        category: 'domestic',
+        headline: 'Federal Planners Blueprint Public-Private Operation Warp Speed Vaccine Push',
+        summary:
+          'Pre-manufacturing mRNA candidates in parallel with clinical trials could shave years off timelines.',
+        tone: 'positive',
+      },
+      {
+        id: 'n-2020-4',
+        month: 1,
+        outlet: 'Washington Post',
+        category: 'politics',
+        headline: 'Governors and White House Clash Over Testing Kits and Reopening Timelines',
+        summary:
+          'Voters demand clear, unified briefings balancing public health and rapid economic reopening.',
+        tone: 'critical',
+      },
+    ],
+    initialBriefing: {
+      title: 'Spring 2020: Pandemic Freeze, CARES Relief & Operation Warp Speed',
+      situationSummary:
+        'With commerce abruptly frozen across major metro hubs and GDP contracting sharply, bipartisan leaders in Congress stand ready for historic relief—yet fierce disputes rage over testing logistics, federal-state authority, and how quickly to reopen workplaces.',
+      domesticIssue:
+        'Governors demand massive federal testing, PPE supply via Defense Production Act, and clear CDC reopening benchmarks.',
+      economicIssue:
+        'Without immediate forgivable Paycheck Protection loans and Fed liquidity, millions of small firms face permanent closure.',
+      foreignIssue:
+        'Securing overseas PPE supply lines and countering opportunistic geopolitical probes while U.S. carriers manage outbreaks.',
+      urgentDilemma:
+        'Will you pair full Operation Warp Speed vaccine advance-purchasing and bipartisan CARES small-business relief with disciplined federal health coordination, or press for immediate unilateral reopening?',
+      suggestedDirectives: [
+        {
+          role: 'Health & Pentagon Logistics',
+          title: 'Launch Operation Warp Speed & DPA Medical Surge',
+          policyDraft:
+            'Commit $12B+ to pre-purchase and manufacture multiple mRNA and viral-vector vaccine candidates in parallel with Phase 3 trials while invoking the Defense Production Act for rapid diagnostics and ventilators.',
+          speechDraft:
+            'We are unleashing the full power of American science, industry, and logistics to deliver safe vaccines in months rather than years.',
+        },
+        {
+          role: 'Treasury & Bipartisan Congress',
+          title: 'Sign $2.2T CARES Act & PPP Small-Business Lifeline',
+          policyDraft:
+            'Enact bipartisan Paycheck Protection forgivable payroll loans, direct household relief checks, expanded jobless benefits, and Treasury-Fed liquidity backstops with independent oversight.',
+          speechDraft:
+            'Workers and small businesses did not cause this shutdown—Washington is standing squarely behind every Main Street payroll until America reopens.',
+        },
+        {
+          role: 'Domestic Task Force',
+          title: 'Phased State Reopening & National Testing Compact',
+          policyDraft:
+            'Distribute rapid point-of-care tests to governors and nursing homes under transparent gating metrics tying phased business reopening to local hospital capacity.',
+          speechDraft:
+            'Smart, data-driven testing protects our seniors while getting Americans safely back to work and school.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'hist_2022_inflation_ukraine',
+    title: '2022 · Inflation Surge & Ukraine Coalition',
+    subtitle: '8.5% CPI shock, NATO sanctions unity, and CHIPS reshoring',
+    eraLabel: '2022 · Post-COVID Inflation & European War',
+    historicalEraTag: '2022 Inflation & Alliance Test',
+    isHistorical: true,
+    historicalYear: 2022,
+    recommendedPresidentId: 'biden',
+    historicalBenchmarkNote:
+      'Real-world 2022 benchmark: Forging unprecedented NATO & G7 sanctions/intelligence sharing to back Ukraine without triggering direct U.S.-Russia nuclear escalation, releasing Strategic Petroleum Reserve barrels against $5 gas, and enacting the bipartisan CHIPS and Science Act & PACT/IRA bills.',
+    historicalKeyEvents: [
+      'Full-Scale Invasion of Ukraine & NATO Unity',
+      '8.5% CPI Surge & Aggressive Fed Rate Hikes',
+      'Bipartisan CHIPS Act & Energy Price Squeeze',
+    ],
+    description:
+      'Headline inflation has hit a 40-year high of 8.5% right as Russia launches a full-scale invasion of Ukraine, spiking global diesel and grain prices while a 50–50 Senate tests every domestic legislative deal.',
+    imageUrl: '/src/assets/images/hist_2022_ukraine_inflation_1795553367938.jpg',
+    initialMetrics: {
+      approval: 42,
+      congressSupport: 48,
+      gdpGrowth: 1.9,
+      inflation: 8.5,
+      unemployment: 3.6,
+      diplomaticStanding: 74,
+      nationalDebtTrillions: 30.4,
+      houseSeats: 222,
+      senateSeats: 50,
+    },
+    initialBlocs: {
+      workingClass: 41,
+      suburbanModerates: 45,
+      techFinance: 48,
+      seniors: 43,
+      youngVoters: 46,
+    },
+    initialCabinet: DEFAULT_CABINET,
+    initialMilitary: {
+      defconLevel: 3,
+      forceReadiness: 86,
+      defenseBudgetBillions: 782,
+      cyberPosture: 'Active Shield',
+      intelThreatLevel: 'Severe',
+      intelSummary:
+        'Largest European land war since 1945 threatens NATO eastern borders while allied intelligence sharing guides Ukrainian defense without U.S. boots on the ground.',
+      jointChiefsChair: {
+        name: 'Gen. Mark A. Milley',
+        branch: 'U.S. Army',
+        doctrine: 'Allied Deterrence & Escalation Management',
+      },
+      operations: [
+        {
+          id: 'op-2022-1',
+          name: 'EUCOM Eastern Flank Reinforcement',
+          region: 'Europe & North Atlantic',
+          posture: 'Deterrence',
+          personnelCount: '100,000',
+          statusNote:
+            'Rotating armored brigades and Patriot batteries across Poland, Romania, and the Baltics.',
+        },
+        {
+          id: 'op-2022-2',
+          name: 'Indo-Pacific Semiconductor Corridor Watch',
+          region: 'Indo-Pacific',
+          posture: 'Deterrence',
+          personnelCount: '54,000',
+          statusNote:
+            'Deterring cross-strait opportunism while reinforcing Tokyo and Seoul alliances.',
+        },
+      ],
+    },
+    initialInstitutions: {
+      fedFundsRate: 2.5,
+      fedStance: 'Hawkish',
+      fedChairNote:
+        'Fed Chair Powell accelerates 75bp rate hikes to cool 8.5% CPI, lifting mortgage rates past 6%.',
+      judiciaryClimate: 'Hostile',
+      pendingCourtNote:
+        'Conservative Supreme Court majority trims executive agency rulemaking and student-debt relief authority.',
+    },
+    initialNews: [
+      {
+        id: 'n-2022-1',
+        month: 1,
+        outlet: 'Reuters World Desk',
+        category: 'foreign',
+        headline: 'NATO Allies Freeze Russian Central Bank Reserves as Kyiv Holds Capital',
+        summary:
+          'Washington coordinates precision artillery, Javelin, and intelligence deliveries across 40+ nations.',
+        tone: 'neutral',
+      },
+      {
+        id: 'n-2022-2',
+        month: 1,
+        outlet: 'Wall Street Journal',
+        category: 'economy',
+        headline: 'CPI Hits 8.5% as Gasoline Tops $4.80 and Fed Signals Rapid Tightening',
+        summary:
+          'Household grocery and fuel anxiety weighs heavily on midterm outlook despite 3.6% unemployment.',
+        tone: 'critical',
+      },
+      {
+        id: 'n-2022-3',
+        month: 1,
+        outlet: 'Capitol Dispatch',
+        category: 'politics',
+        headline: 'Senate Advances Bipartisan CHIPS & Domestic Semiconductor Package',
+        summary:
+          'Lawmakers back $52B in U.S. fab incentives to break reliance on vulnerable overseas chip supply.',
+        tone: 'positive',
+      },
+      {
+        id: 'n-2022-4',
+        month: 1,
+        outlet: 'Energy Markets Today',
+        category: 'economy',
+        headline: 'Allies Debate Strategic Oil Releases and LNG Exports to Ease Europe Winter',
+        summary:
+          'Domestic oil producers weigh capital discipline against White House calls for higher output.',
+        tone: 'neutral',
+      },
+    ],
+    initialBriefing: {
+      title: '2022: 8.5% Inflation, European Land War & CHIPS Reshoring',
+      situationSummary:
+        'Tight post-pandemic supply chains and an energy-spiking war in Ukraine have pushed inflation to 8.5%, squeezing family budgets even with 3.6% unemployment. With a 50–50 Senate, you must balance NATO deterrence against escalation risk while enacting domestic anti-inflation and semiconductor bills.',
+      domesticIssue:
+        'Voters punish the White House for $4.80+ gas and soaring grocery bills, demanding immediate relief without adding inflationary deficit fuel.',
+      economicIssue:
+        'The Fed’s aggressive 75bp rate hikes risk cooling housing and tech hiring, making deficit-reducing drug-pricing and supply-side CHIPS reforms vital.',
+      foreignIssue:
+        'Sustaining bipartisan congressional Ukraine aid and European energy solidarity while deterring direct NATO-Russia confrontation.',
+      urgentDilemma:
+        'Will you coordinate Strategic Petroleum Reserve releases, pass the bipartisan CHIPS Act and deficit-cutting health/energy measures, and arm Ukraine within clear NATO red lines—or pivot toward unilateral price controls and aid caps?',
+      suggestedDirectives: [
+        {
+          role: 'Secretary of State & Defense',
+          title: 'NATO Eastern Flank Shield & Calibrated Ukraine Aid',
+          policyDraft:
+            'Coordinate G7 financial sanctions and allied artillery/air-defense deliveries to Kyiv while deploying 100,000 U.S. deterrence forces along NATO’s eastern border and maintaining strict nuclear deconfliction channels.',
+          speechDraft:
+            'When dictators pay no price for aggression, they cause more chaos. We will stand with Ukraine and defend every inch of NATO territory without sending American troops into direct combat.',
+        },
+        {
+          role: 'Treasury & Energy',
+          title: 'Strategic Reserve Release & Deficit-Lowering Cost Relief',
+          policyDraft:
+            'Authorize coordinated IEA Strategic Petroleum Reserve releases to stabilize pump prices while passing prescription drug price negotiation and deficit reduction to complement Fed inflation-fighting.',
+          speechDraft:
+            'Tackling inflation starts with lowering energy and prescription drug costs for families while bringing down the federal deficit.',
+        },
+        {
+          role: 'Commerce & Bipartisan Senate',
+          title: 'Sign Bipartisan CHIPS & Science Reshoring Act',
+          policyDraft:
+            'Secure bipartisan passage of $52B in domestic semiconductor fabrication incentives and regional tech-hub R&D grants to safeguard U.S. defense and industrial supply chains.',
+          speechDraft:
+            'America invented the semiconductor—now we are bringing chip manufacturing and supply-chain security back home.',
+        },
+      ],
+    },
+  },
 ];

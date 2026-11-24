@@ -642,7 +642,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                Real-Life Presidents (50 Choices)
+                Real-Life Presidents ({HISTORICAL_PRESIDENTS.length} Choices)
               </button>
               <button
                 type="button"
@@ -663,8 +663,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <span className="text-sm font-semibold text-stone-800">
-                    Select from 50 U.S. Presidents &amp; Historical Figures
-                    (Washington to Trump + Contenders)
+                    Select from the Last 10 U.S. Presidents (Nixon to Trump)
                   </span>
                   <p className="text-xs text-stone-500">
                     Showing {filteredPresidents.length} of{' '}
@@ -682,7 +681,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                     type="text"
                     value={presidentSearch}
                     onChange={(e) => setPresidentSearch(e.target.value)}
-                    placeholder="Search 50 Presidents by name, party, era..."
+                    placeholder="Search last 10 Presidents by name, party, era..."
                     className="w-full rounded-lg border border-stone-300 bg-white pl-8 pr-3 py-1.5 text-xs text-stone-900 focus:border-[#132238] focus:outline-none"
                   />
                 </div>
@@ -800,11 +799,11 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                     htmlFor="custom-president-preset"
                     className="block text-sm font-semibold text-stone-800"
                   >
-                    Custom Select Your President (or Quick-Fill from 50 Real-Life Figures)
+                    Custom Select Your President (or Quick-Fill from Last 10 Presidents)
                   </label>
                   <p className="text-xs text-stone-500">
-                    Type any custom President below, or pick any of the 50 real-life
-                    Presidents &amp; figures to customize their party, coalition, VP,
+                    Type any custom President below, or pick any of the last 10
+                    U.S. Presidents to customize their party, coalition, VP,
                     Cabinet &amp; Chiefs.
                   </p>
                 </div>
@@ -826,7 +825,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                   className="flex-1 min-w-[260px] rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-medium text-stone-900 focus:border-[#132238] focus:outline-none"
                 >
                   <option value="">
-                    -- Quick-Select Any of 50 Real-Life Presidents / Figures --
+                    -- Quick-Select Any of the Last 10 U.S. Presidents --
                   </option>
                   {HISTORICAL_PRESIDENTS.map((pres) => (
                     <option key={pres.id} value={pres.id}>
@@ -1536,7 +1535,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                   ))}
                 </div>
                 <span className="text-xs text-stone-500">
-                  Select a national backdrop including The AI Age, Cold War, and Fiscal Reckoning
+                  Select from {SCENARIOS.length} national backdrops including Cyber &amp; Space, Biosecurity, Tariff Reset, and The AI Age
                 </span>
               </div>
 
@@ -1645,7 +1644,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                         Historical Scenarios Mode · Era-Accurate Congress, Macro &amp; News Benchmarks
                       </p>
                       <p className="text-xs leading-relaxed text-stone-600">
-                        Command landmark American crises from the 1933 Great Depression to the 1962 Cuban Missile Crisis and 1979 Oil Shock with real-world unemployment, inflation, congressional seat splits, and historically grounded headlines.
+                        Command landmark American crises from the 1933 Great Depression and 1962 Cuban Missile Crisis through the 1981 Supply-Side Reset, 2008 Crash, and 2022 Inflation &amp; Ukraine Coalition with real-world unemployment, inflation, congressional seat splits, and historically grounded headlines.
                       </p>
                       {activeHistoricalScenario.historicalBenchmarkNote && (
                         <p className="text-[11px] leading-relaxed text-stone-500 pt-0.5">
