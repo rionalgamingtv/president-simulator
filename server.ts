@@ -33,7 +33,7 @@ function getAIClient() {
   });
 }
 
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 1): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -47,7 +47,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
                   'Simulation model request timed out. Retrying or please try again.'
                 )
               ),
-            40000
+            25000
           )
         ),
       ]);
@@ -682,26 +682,40 @@ async function runJsonWithKeepAlive(
 ) {
   let headersFlushed = false;
   let closed = false;
+
+  const flushKeepAliveHeaders = () => {
+    if (headersFlushed || closed || res.writableEnded || res.destroyed) return;
+    headersFlushed = true;
+    res.status(200);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+  };
+
+  const initialFlushTimer = setTimeout(() => {
+    flushKeepAliveHeaders();
+    if (!closed && !res.writableEnded && !res.destroyed) {
+      res.write(' ');
+    }
+  }, 1200);
+
   const keepAliveTimer = setInterval(() => {
     if (closed || res.writableEnded || res.destroyed) return;
-    if (!headersFlushed) {
-      headersFlushed = true;
-      res.status(200);
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-cache, no-transform');
-      res.flushHeaders?.();
-    }
+    flushKeepAliveHeaders();
     res.write(' ');
-  }, 8000);
+  }, 2500);
 
   const onClose = () => {
     closed = true;
+    clearTimeout(initialFlushTimer);
     clearInterval(keepAliveTimer);
   };
   res.on('close', onClose);
 
   try {
     const payload = await fn();
+    clearTimeout(initialFlushTimer);
     clearInterval(keepAliveTimer);
     res.off('close', onClose);
     if (closed || res.writableEnded || res.destroyed) return;
@@ -709,9 +723,15 @@ async function runJsonWithKeepAlive(
     if (headersFlushed) {
       res.end(serialized);
     } else {
-      res.status(200).setHeader('Content-Type', 'application/json; charset=utf-8').send(serialized);
+      res
+        .status(200)
+        .setHeader('Content-Type', 'application/json; charset=utf-8')
+        .setHeader('Cache-Control', 'no-cache, no-transform')
+        .setHeader('X-Accel-Buffering', 'no')
+        .send(serialized);
     }
   } catch (err) {
+    clearTimeout(initialFlushTimer);
     clearInterval(keepAliveTimer);
     res.off('close', onClose);
     console.error('[Executive Term API Error]', err);
@@ -807,7 +827,7 @@ function formatServerCalendarLabel(
 
   app.post('/api/generate-initial-briefing', async (req, res) => {
     await runJsonWithKeepAlive(res, async () => {
-      const { profile, customPremise } = req.body;
+      const { profile, customPremise } = req.body || {};
       const ai = getAIClient();
       const partyLabel = resolvePartyLabel(profile);
       const rawYear = Number(profile?.startingYear);
@@ -815,6 +835,26 @@ function formatServerCalendarLabel(
         Number.isFinite(rawYear) && rawYear >= 2000 && rawYear <= 2026
           ? Math.round(rawYear)
           : undefined;
+
+      const climateDescriptions: Record<string, string> = {
+        standard: 'Balanced Cycle (standard partisan scrutiny and legislative friction)',
+        mandate: 'Landslide Mandate (decisive electoral victory, strong Congressional political capital)',
+        hardball: 'Partisan Hardball (deeply polarized Capitol, hostile opposition subpoenas, minimal margin for error)',
+        honeymoon: 'Bipartisan Honeymoon (cross-aisle Senate cooperation and constructive treaty window)',
+        populist_wave: 'Populist Upheaval (anti-establishment anger, working-class mobilization, corporate & trade skepticism)',
+        tech_disruption: 'AI & Market Volatility (rapid AI automation booms, grid strain, white-collar anxiety, fierce tech regulation fights)',
+      };
+      const climateLabel =
+        climateDescriptions[String(profile?.difficultyMode || 'standard')] ||
+        climateDescriptions.standard;
+      const difficultyPrompts: Record<string, string> = {
+        easy: 'Easy (Favorable Tailwinds — constructive press, cooperative floor whips, softer initial headwinds)',
+        medium: 'Medium (Realistic Presidency — balanced economic & congressional friction)',
+        hard: 'Hard (Brutal Crucible — sharp inflation/deficit tension, skeptical electorate, aggressive opposition oversight)',
+      };
+      const gameDiffLabel =
+        difficultyPrompts[String(profile?.gameDifficulty || 'medium')] ||
+        difficultyPrompts.medium;
 
       const prompt = `
 Create an inaugural Month 1 National Briefing for a newly inaugurated President in a realistic political simulation.
@@ -824,6 +864,8 @@ President Profile:
 - Political Party: ${partyLabel}
 - Coalition: ${profile?.coalition || 'center_left'}
 - Background: ${profile?.background || 'governor'}
+- Difficulty Setting: ${gameDiffLabel}
+- Political Climate Posture: ${climateLabel}
 ${profile?.governingDoctrine ? `- Historical / Governing Doctrine: ${profile.governingDoctrine}` : ''}
 ${startingYear ? `- Inauguration Timeline: January ${startingYear} (anchor debt in trillions, Fed Funds rate, inflation, unemployment, defense budget, technology context, and news outlets authentically to ${startingYear}!).` : ''}
 - Custom National Scenario Premise: ${customPremise || 'A nation facing moderate inflation, infrastructure decay, and delicate trade negotiations.'}
@@ -876,7 +918,7 @@ Return a single JSON object matching this exact shape (keep prose crisp, 1-2 sen
         currentMember,
         replacementDirection,
         metrics,
-      } = req.body;
+      } = req.body || {};
       const ai = getAIClient();
 
       const senateSeats = Number(metrics?.senateSeats ?? 50);
@@ -1028,6 +1070,122 @@ Generate a realistic replacement Cabinet nominee and evaluate how Senate & Congr
     });
   });
 
+  app.post('/api/replace-joint-chiefs', async (req, res) => {
+    await runJsonWithKeepAlive(res, async () => {
+      const { profile, currentJcs, replacementDirection, metrics } = req.body || {};
+      const ai = getAIClient();
+
+      const senateSeats = Number(metrics?.senateSeats ?? 50);
+      const houseSeats = Number(metrics?.houseSeats ?? 218);
+      const congressSupport = Number(metrics?.congressSupport ?? 50);
+      const approval = Number(metrics?.approval ?? 48);
+      const partyLabel = resolvePartyLabel(profile);
+
+      const prompt = `
+President ${profile?.name || 'Jordan Mercer'} (Political Party: ${partyLabel}) is nominating a permanent Chair of the Joint Chiefs of Staff to succeed ${currentJcs?.name || 'Acting Chair'}.
+Player's nominee preference / doctrine / background: "${replacementDirection || 'Appoint a seasoned combat-tested general or admiral with strong bipartisan credibility and strategic deterrence expertise.'}"
+Congressional Context:
+- Senate Coalition Seats: ${senateSeats}/100
+- House Coalition Seats: ${houseSeats}/435
+- Congressional Support: ${congressSupport}%
+- Presidential Approval: ${approval}%
+
+Generate a realistic military nominee and evaluate how the Senate Armed Services Committee and Congress react:
+- name: full military name with rank (e.g., General Marcus Vance, Admiral Elena Rostova)
+- branch: military branch (Army, Navy, Air Force, Marine Corps, Space Force)
+- doctrine: strategic doctrine (e.g., Forward Deterrence, Coalition Integration, Decisive Air-Land Strike, Maritime Dominance)
+- loyalty: integer 60-95
+- competence: integer 65-98
+- bipartisanAppeal: integer from -12 to +12
+- currentCounsel: 1 sentence on defense priorities
+- confirmHeadline: Senate confirmation headline
+- rejectHeadline: Senate rejection headline
+- confirmCommitteeNote: Senate Armed Services confirmation summary
+- rejectCommitteeNote: Senate Armed Services rejection summary
+`;
+
+      const parsed = await generateGeminiJson(ai, {
+        model: MODEL_NAME,
+        contents: prompt,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+          systemInstruction:
+            'You are a military and political simulation engine modeling U.S. Senate Armed Services Committee confirmation votes for the Chair of the Joint Chiefs of Staff. Return valid JSON only.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              branch: { type: Type.STRING },
+              doctrine: { type: Type.STRING },
+              loyalty: { type: Type.INTEGER },
+              competence: { type: Type.INTEGER },
+              bipartisanAppeal: { type: Type.INTEGER },
+              currentCounsel: { type: Type.STRING },
+              confirmHeadline: { type: Type.STRING },
+              rejectHeadline: { type: Type.STRING },
+              confirmCommitteeNote: { type: Type.STRING },
+              rejectCommitteeNote: { type: Type.STRING },
+            },
+            required: [
+              'name',
+              'branch',
+              'doctrine',
+              'loyalty',
+              'competence',
+              'bipartisanAppeal',
+              'currentCounsel',
+              'confirmHeadline',
+              'rejectHeadline',
+              'confirmCommitteeNote',
+              'rejectCommitteeNote',
+            ],
+          },
+        },
+      });
+
+      const appeal = Math.max(-12, Math.min(12, Number(parsed.bipartisanAppeal || 0)));
+      const supportShift = (congressSupport - 50) * 0.14;
+      const approvalShift = (approval - 48) * 0.08;
+      const appealShift = appeal * 0.65;
+      const rawYea = Math.round(senateSeats + supportShift + approvalShift + appealShift);
+      const senateYea = Math.max(30, Math.min(88, rawYea));
+      const senateNay = 100 - senateYea;
+      const approved = senateYea >= 51;
+
+      const nomineeName = String(parsed.name || 'General Arthur Sterling');
+      const branch = String(parsed.branch || 'Joint Services');
+      const doctrine = String(parsed.doctrine || 'Forward Deterrence');
+      const loyalty = Math.max(40, Math.min(96, Number(parsed.loyalty || 85)));
+      const competence = Math.max(50, Math.min(98, Number(parsed.competence || 88)));
+      const currentCounsel = String(parsed.currentCounsel || 'Readiness and force posture are secure across all regional commands.');
+      const confirmHeadline = String(parsed.confirmHeadline || `Senate Confirms ${nomineeName} as Chair of the Joint Chiefs of Staff`);
+      const rejectHeadline = String(parsed.rejectHeadline || `Senate Rejects Nomination of ${nomineeName} for Joint Chiefs Chair`);
+      const confirmCommitteeNote = String(parsed.confirmCommitteeNote || 'Armed Services Committee voted overwhelmingly to confirm the nominee.');
+      const rejectCommitteeNote = String(parsed.rejectCommitteeNote || 'Bipartisan skepticism in committee stalled the confirmation vote.');
+
+      const congressDelta = approved ? (appeal >= 5 ? 1.5 : 0.5) : -2.5;
+      const approvalDelta = approved ? 0.6 : -1.2;
+
+      return {
+        approved,
+        senateYea,
+        senateNay,
+        voteMarginLabel: approved ? `Confirmed ${senateYea}–${senateNay}` : `Rejected ${senateYea}–${senateNay}`,
+        nomineeName,
+        branch,
+        doctrine,
+        loyalty,
+        competence,
+        currentCounsel,
+        confirmationHeadline: approved ? confirmHeadline : rejectHeadline,
+        committeeSummary: approved ? confirmCommitteeNote : rejectCommitteeNote,
+        congressDelta,
+        approvalDelta,
+      };
+    });
+  });
+
   app.post('/api/simulate-turn', async (req, res) => {
     const {
       profile,
@@ -1045,7 +1203,7 @@ Generate a realistic replacement Cabinet nominee and evaluate how Senate & Congr
       publicMessaging,
       recentHistory,
       reelectionCampaign,
-    } = req.body;
+    } = req.body || {};
 
     const cleanPolicy =
       typeof policyDirective === 'string' ? policyDirective.trim() : '';
@@ -1069,7 +1227,19 @@ Generate a realistic replacement Cabinet nominee and evaluate how Senate & Congr
               c && typeof c.id === 'string' && typeof c.name === 'string'
           )
         : [];
-      const scandalRollChance = cleanPersonal.length > 0 ? 0.28 : 0.22;
+      const diffKey = String(profile?.gameDifficulty || 'medium');
+      const scandalRollChance =
+        diffKey === 'easy'
+          ? cleanPersonal.length > 0
+            ? 0.14
+            : 0.1
+          : diffKey === 'hard'
+          ? cleanPersonal.length > 0
+            ? 0.38
+            : 0.3
+          : cleanPersonal.length > 0
+          ? 0.28
+          : 0.22;
       const shouldTriggerScandal =
         !isFinalMonth &&
         currentMonth >= 2 &&
@@ -1121,11 +1291,40 @@ Generate a realistic replacement Cabinet nominee and evaluate how Senate & Congr
       );
       const partyLabel = resolvePartyLabel(profile);
 
+      const turnClimateLabels: Record<string, string> = {
+        standard: 'Balanced Cycle',
+        mandate: 'Landslide Mandate (high political capital, strong Congressional leverage)',
+        hardball: 'Partisan Hardball (polarized Congress, aggressive oversight, fierce opposition media)',
+        honeymoon: 'Bipartisan Honeymoon (cross-aisle dealmaking appetite in Senate & House)',
+        populist_wave: 'Populist Upheaval (anti-establishment wave, working-class urgency, institution skepticism)',
+        tech_disruption: 'AI & Market Volatility (rapid AI workforce shifts, gigawatt grid strain, tech policy battles)',
+      };
+      const turnClimateText =
+        turnClimateLabels[String(profile?.difficultyMode || 'standard')] ||
+        turnClimateLabels.standard;
+      const turnDifficultyLabels: Record<string, string> = {
+        easy: 'Easy (Favorable Tailwinds — constructive legislative dealmaking, forgiving voter mood, softer negative shocks)',
+        medium: 'Medium (Realistic Presidency — balanced trade-offs and credible congressional resistance)',
+        hard: 'Hard (Brutal Crucible — hyper-critical media, tough floor resistance, sharper inflation/approval penalties for missteps)',
+      };
+      const turnDifficultyText =
+        turnDifficultyLabels[diffKey] || turnDifficultyLabels.medium;
+
+      const isHistoricalEra = Boolean(
+        profile?.historicalScenarioId ||
+          (typeof profile?.startingYear === 'number' && profile.startingYear < 2000)
+      );
+      const historicalGuidance = isHistoricalEra
+        ? `\n- HISTORICAL SCENARIO ACCURACY MODE (${profile?.startingYear || 'Historical Era'}): Keep ALL news outlets, geopolitical crises, technologies, congressional coalitions, military doctrines, and economic magnitudes strictly authentic to ${calendarDateLabel} (zero modern anachronisms like internet/AI/modern outlets if set in the 20th century!). Explicitly reflect historical turning points or counter-factual divergence relative to the real-world benchmark.${profile?.historicalBenchmarkNote ? ` Benchmark context: ${profile.historicalBenchmarkNote}` : ''}`
+        : '';
+
       const prompt = `
 Simulate ${calendarDateLabel} of a ${profile?.termLength || 48}-month presidential administration.
 
 PRESIDENT, VICE PRESIDENT & POLITICAL CONTEXT:
 - President: ${profile?.name} (Political Party: ${partyLabel}, Coalition: ${profile?.coalition}, former ${profile?.background})${profile?.governingDoctrine ? `\n- President's Governing Style / Doctrine: ${profile.governingDoctrine}` : ''}
+- Difficulty Setting: ${turnDifficultyText}
+- Political Climate Posture: ${turnClimateText}${historicalGuidance}
 - Party Dynamics: ${partyLabel === 'Independent' ? 'Governing as an Independent without an automatic House/Senate party whip; major bills require cross-aisle deals with both Democratic and Republican caucuses, while partisan media may attack from both flanks.' : `Governing as a ${partyLabel} President; reflect intraparty ${partyLabel} caucus alignment/defections, opposition party pushback in Congress, and partisan/independent voter reactions.`}
 - Vice President: ${vicePresident?.name || 'Sen. Claire Bennett'} (${vicePresident?.leaning || 'Moderate'}, loyalty ${vicePresident?.loyalty || 80}%)
 - Scenario: ${scenarioTitle}
@@ -1267,7 +1466,7 @@ Return ONLY a single JSON object matching this exact schema:
         blocs,
         history,
         reelectionCampaign,
-      } = req.body;
+      } = req.body || {};
       const ai = getAIClient();
 
       const keyTurns = Array.isArray(history)
@@ -1288,6 +1487,7 @@ Return ONLY a single JSON object matching this exact schema:
       const prompt = `
 Write a Presidential Legacy Evaluation for ${profile?.name} (Political Party: ${partyLabel}, Coalition: ${profile?.coalition}, former ${profile?.background}${profile?.startingYear ? `, inaugurated Jan ${profile.startingYear}` : ''}) who governed through "${scenarioTitle}" for ${history?.length || 0} months.
 ${profile?.governingDoctrine ? `Governing Doctrine: ${profile.governingDoctrine}` : ''}
+${profile?.historicalBenchmarkNote ? `Historical Scenario Benchmark (grade how well the administration matched or surpassed real history): ${profile.historicalBenchmarkNote}` : ''}
 Re-Election Decision: ${reelectionCampaign?.decision === 'running' ? `Ran an active re-election campaign against ${reelectionCampaign.opponentName} (${reelectionCampaign.opponentParty}) with projected vote share ${reelectionCampaign.projectedVoteShare}%.` : reelectionCampaign?.decision === 'declined' ? 'Voluntarily declined to seek re-election and completed the remaining term focused on governance and legacy.' : 'Did not launch a re-election campaign.'}
 
 Final Metrics:
@@ -1365,7 +1565,7 @@ Produce a historical letter grade (A+, A, A-, B+, B, B-, C+, C, D, or F), an aut
         metrics,
         legislativeRecords,
         history,
-      } = req.body;
+      } = req.body || {};
 
       const ai = getAIClient();
 
@@ -1400,6 +1600,7 @@ Produce a historical letter grade (A+, A, A-, B+, B, B-, C+, C, D, or F), an aut
       const prompt = `
 Prepare a cumulative Presidential Library Retrospective for President ${profile?.name} (Political Party: ${partyLabel}, VP ${vicePresident?.name || 'N/A'}${profile?.startingYear ? `, inaugurated Jan ${profile.startingYear}` : ''}) governing through "${scenarioTitle}" as of ${formatServerCalendarLabel(currentMonth, profile?.startingYear)} of ${profile?.termLength || 48}.
 ${profile?.governingDoctrine ? `Administration Doctrine: ${profile.governingDoctrine}` : ''}
+${profile?.historicalBenchmarkNote ? `Historical Scenario Benchmark: ${profile.historicalBenchmarkNote}` : ''}
 
 Inauguration Baseline vs. Current Standing:
 - Approval: ${initialMetrics?.approval}% -> ${metrics?.approval}%
@@ -1468,7 +1669,7 @@ Write an authoritative, cumulative Presidential Library exhibition synthesis cov
       currentBriefing,
       statement,
       venue,
-    } = req.body;
+    } = req.body || {};
 
     const cleanStatement =
       typeof statement === 'string' ? statement.trim() : '';
@@ -1677,7 +1878,7 @@ Return ONLY a single JSON object matching this shape:
       currentBriefing,
       action,
       visibility,
-    } = req.body;
+    } = req.body || {};
 
     const cleanAction = typeof action === 'string' ? action.trim() : '';
     if (!cleanAction) {
@@ -1908,7 +2109,8 @@ Return ONLY a single JSON object matching this exact schema:
       targetCountry,
       orderSummary,
       seekCongressAuthorization,
-    } = req.body;
+      theaterContext,
+    } = req.body || {};
 
     const cleanOrder =
       typeof orderSummary === 'string' ? orderSummary.trim() : '';
@@ -1970,6 +2172,15 @@ Return ONLY a single JSON object matching this exact schema:
         ? `${military.jointChiefsChair.name} (${military.jointChiefsChair.branch}, ${military.jointChiefsChair.doctrine})`
         : 'Joint Chiefs Chair';
 
+      const theaterLine = theaterContext
+        ? `- Regional Theater Force Posture (${theaterContext.theaterName || theaterContext.commandCode}): ${
+            Array.isArray(theaterContext.assignedUnitNames) &&
+            theaterContext.assignedUnitNames.length > 0
+              ? `${theaterContext.assignedUnitNames.join(', ')} (${theaterContext.deterrenceLabel}; Security Success Odds ${theaterContext.operationSuccessProbabilityPct}%, Diplomacy Bonus +${theaterContext.diplomacyOddsBonusPct}%)`
+              : `No forward-deployed combat units assigned (${theaterContext.deterrenceLabel}; baseline odds ${theaterContext.operationSuccessProbabilityPct}%)`
+          }`
+        : '';
+
       const prompt = `
 The President convened an urgent National Security Council session in the White House Situation Room to execute a major military, war, or peace decision.
 
@@ -1983,6 +2194,7 @@ CONTEXT:
 - Active Operations Before Order: ${currentOpsText}
 - Chair of Joint Chiefs: ${jcs}
 - Key National Security Cabinet: ${cabinetText}
+${theaterLine}
 
 SITUATION ROOM DECISION:
 - Scenario Type: ${cleanScenarioType}
@@ -1991,7 +2203,7 @@ SITUATION ROOM DECISION:
 - President's Exact Order: "${cleanOrder}"
 
 RULES FOR REALISTIC SIMULATION:
-1. Respond with grounded geopolitical realism—whether starting a war against ${cleanCountry}, ending an active war / signing a peace treaty, imposing a blockade, ordering strikes, or executing a custom crisis scenario:
+1. Respond with grounded geopolitical realism—whether starting a war against ${cleanCountry}, ending an active war / signing a peace treaty, imposing a blockade, ordering strikes, or executing a custom crisis scenario. Factor in whether U.S. combat/naval units are already forward-deployed in that regional theater (reference specific assigned units if present, or note the logistics delay if unassigned):
    - CONGRESS RESPONSE: Model Capitol Hill's reaction using the President's actual party (${partyLabel}) and House/Senate seat count (${metrics?.houseSeats ?? 218} House, ${metrics?.senateSeats ?? 50} Senate). If starting war WITHOUT Congress, model sharp War Powers Resolution pushback alongside hawkish allies; if requesting AUMF or negotiating a peace treaty, estimate Senate & House vote margins and include quotes from both Majority and Opposition leaders.
    - CABINET & JOINT CHIEFS RESPONSES: Provide 3-4 realistic quotes from the actual appointed Defense Secretary, Secretary of State, NSA, Chief of Staff, or Joint Chiefs Chair reflecting their doctrines/leanings, with stance ("supportive"|"skeptical"|"critical") and loyaltyDelta (-10 to +8). Include "departmentId" when speaking as defense, state, nsa, chief_of_staff, treasury, or press_secretary.
    - MEDIA REACTIONS: Breaking front-page outlet/headline/summary + 3 wire items covering defense, diplomacy, domestic politics, and markets/oil/inflation.
@@ -2235,7 +2447,7 @@ Return ONLY a single JSON object matching this exact schema:
       strategy,
       defenseStatement,
       recentHistory,
-    } = req.body;
+    } = req.body || {};
 
     const approval = toNum(metrics?.approval, 4);
     if (approval >= 5) {
@@ -2421,7 +2633,7 @@ Return ONLY a single JSON object:
       targetName,
       roleTitle,
       reason,
-    } = req.body;
+    } = req.body || {};
 
     const cleanCategory = pickEnum(
       targetCategory,
@@ -2673,7 +2885,7 @@ Return ONLY a single JSON object:
 
   app.post('/api/nominate-vp', async (req, res) => {
     await runJsonWithKeepAlive(res, async () => {
-      const { profile, currentVpName, nomineeDirection, metrics } = req.body;
+      const { profile, currentVpName, nomineeDirection, metrics } = req.body || {};
       const ai = getAIClient();
 
       const senateSeats = toNum(metrics?.senateSeats, 50);
@@ -2785,7 +2997,7 @@ Return ONLY valid JSON:
       legislativeRecords,
       diplomaticMissions,
       currentBriefing,
-    } = req.body;
+    } = req.body || {};
 
     await runJsonWithKeepAlive(res, async () => {
       const ai = getAIClient();
@@ -2939,7 +3151,7 @@ Return ONLY a JSON object matching:
       cabinet,
       questionItem,
       answer,
-    } = req.body;
+    } = req.body || {};
 
     const cleanAnswer = typeof answer === 'string' ? answer.trim() : '';
     if (!cleanAnswer) {
@@ -3130,7 +3342,7 @@ Return ONLY a single JSON object matching this exact schema:
       metrics,
       themeTitle,
       customRemarks,
-    } = req.body;
+    } = req.body || {};
 
     const cleanTheme =
       typeof themeTitle === 'string' && themeTitle.trim()
@@ -3287,7 +3499,7 @@ Return ONLY a JSON object matching:
       metrics,
       military,
       diplomaticMissions,
-    } = req.body;
+    } = req.body || {};
 
     await runJsonWithKeepAlive(res, async () => {
       const ai = getAIClient();

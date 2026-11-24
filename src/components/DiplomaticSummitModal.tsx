@@ -13,6 +13,7 @@ import {
   DiplomaticSummitChoice,
   DiplomaticSummitOutcome,
   DiplomaticSummitPower,
+  MilitaryCommandState,
   NationalMetrics,
 } from '../types/game';
 import {
@@ -20,6 +21,7 @@ import {
   buildSummitRound2,
   buildSummitRound3,
   computeInitialSummitMetrics,
+  computeSummitSecurityRiskPct,
   evaluateDiplomaticSummit,
 } from '../data/diplomaticSummit';
 
@@ -28,6 +30,11 @@ interface DiplomaticSummitModalProps {
   currentMonth: number;
   metrics: NationalMetrics;
   stateSecCompetence: number;
+  theaterDiplomacyBonusPct?: number;
+  theaterLabel?: string;
+  secretServiceProtection?: boolean;
+  intelThreatLevel?: MilitaryCommandState['intelThreatLevel'];
+  defconLevel?: number;
   onComplete: (outcome: DiplomaticSummitOutcome) => void;
   onClose: () => void;
 }
@@ -41,12 +48,41 @@ export const DiplomaticSummitModal: React.FC<DiplomaticSummitModalProps> = ({
   currentMonth,
   metrics,
   stateSecCompetence,
+  theaterDiplomacyBonusPct = 0,
+  theaterLabel,
+  secretServiceProtection = false,
+  intelThreatLevel = 'Elevated',
+  defconLevel = 4,
   onComplete,
   onClose,
 }) => {
   const initial = useMemo(
-    () => computeInitialSummitMetrics(power, metrics, stateSecCompetence),
-    [power, metrics, stateSecCompetence]
+    () =>
+      computeInitialSummitMetrics(
+        power,
+        metrics,
+        stateSecCompetence,
+        theaterDiplomacyBonusPct
+      ),
+    [power, metrics, stateSecCompetence, theaterDiplomacyBonusPct]
+  );
+
+  const securityRisk = useMemo(
+    () =>
+      computeSummitSecurityRiskPct({
+        power,
+        intelThreatLevel,
+        defconLevel,
+        theaterDiplomacyBonusPct,
+        secretServiceProtection,
+      }),
+    [
+      power,
+      intelThreatLevel,
+      defconLevel,
+      theaterDiplomacyBonusPct,
+      secretServiceProtection,
+    ]
   );
 
   const [choices, setChoices] = useState<DiplomaticSummitChoice[]>([]);
@@ -99,6 +135,10 @@ export const DiplomaticSummitModal: React.FC<DiplomaticSummitModalProps> = ({
         startingTrust: initial.startingTrust,
         baseWalkoutRiskPct: initial.baseWalkoutRiskPct,
         choices: nextChoices,
+        secretServiceProtection,
+        intelThreatLevel,
+        defconLevel,
+        theaterDiplomacyBonusPct,
       });
       setOutcome(evaluated);
     }
@@ -210,12 +250,47 @@ export const DiplomaticSummitModal: React.FC<DiplomaticSummitModalProps> = ({
           {!outcome && activeRound ? (
             <>
               <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 space-y-1.5">
-                <p className="text-[11px] font-semibold text-stone-500">
-                  Summit Dossier · {power.secondaryMetricLabel}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold text-stone-500">
+                    Summit Dossier · {power.secondaryMetricLabel}
+                  </p>
+                  {theaterDiplomacyBonusPct > 0 && (
+                    <span className="font-mono-num text-[11px] font-semibold text-emerald-700">
+                      {theaterLabel ? `${theaterLabel} Units` : 'Theater Units'} (+
+                      {theaterDiplomacyBonusPct}% Backing)
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs leading-relaxed text-stone-700">
                   {power.coreIssue}
                 </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-200 pt-2 font-mono-num text-[11px]">
+                  <span
+                    className={
+                      secretServiceProtection
+                        ? 'font-semibold text-emerald-800'
+                        : 'font-semibold text-amber-800'
+                    }
+                  >
+                    {secretServiceProtection
+                      ? 'Secret Service Protection: ON (-75% threat · $10B outlay)'
+                      : 'Secret Service Protection: OFF (Toggle in Briefing Desk)'}
+                  </span>
+                  <span className="font-semibold text-stone-700">
+                    Assassination / Kidnapping Risk:{' '}
+                    <strong
+                      className={
+                        securityRisk.effectiveRiskPct >= 15
+                          ? 'text-red-700'
+                          : 'text-emerald-800'
+                      }
+                    >
+                      {securityRisk.effectiveRiskPct}%
+                    </strong>
+                    {secretServiceProtection &&
+                      ` (down from ${securityRisk.baseRiskPct}%)`}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-3">

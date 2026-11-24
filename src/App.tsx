@@ -19,17 +19,25 @@ import {
   EmergencyAlertEvent,
   EmergencyResolutionRecord,
   EmergencyResponseOption,
+  ExecutedPowerRecord,
+  ExecutivePowerDefinition,
   FedConsultOption,
   FireOfficialRequest,
   GamePhase,
   ImpeachmentResult,
   ImpeachmentStrategy,
   InstitutionalState,
+  JcsConfirmationResult,
   JudicialNominationOption,
   LegislativeRecordItem,
   LibrarySynthesis,
   MilestoneItem,
   MilitaryCommandState,
+  MilitaryMedalAwardRecord,
+  MilitaryMedalDefinition,
+  MilitaryPromotionRecord,
+  MilitaryServiceBranch,
+  MilitaryServiceMember,
   MonthlyBriefing,
   NationalMetrics,
   NewsHeadlineItem,
@@ -41,6 +49,7 @@ import {
   PressConferenceSummary,
   PublicStatementResult,
   ReelectionCampaignState,
+  RegionalTheaterId,
   SavedCareerState,
   ScenarioDefinition,
   SituationRoomResult,
@@ -49,6 +58,10 @@ import {
   StateOfTheUnionResult,
   StatementVenue,
   TermHistoryEntry,
+  TheaterSecurityEventDefinition,
+  TheaterSecurityEventOutcome,
+  TheaterUnitAssignment,
+  TheaterUnitPosture,
   TurnOutcome,
   UnscriptedActionResult,
   UnscriptedActionVisibility,
@@ -57,7 +70,26 @@ import {
   VoterBlocs,
   VpNominationResult,
   WorkspaceTab,
+  AdminSuiteState,
 } from './types/game';
+import { createDefaultAdminSuiteState } from './data/executiveSuite';
+import {
+  computeTheaterInfluence,
+  createDefaultTheaterAssignments,
+  DEPLOYABLE_MILITARY_UNITS,
+  REGIONAL_THEATERS,
+  resolveCountryToTheater,
+} from './data/regionalTheaters';
+import {
+  canAwardMedalToMember,
+  createInitialMilitaryRoster,
+  getMedalDisplayName,
+  getServiceRankInfo,
+  getTopEligibleMedalForMember,
+  MAX_RANK_GRADE_INDEX,
+  MILITARY_SERVICES,
+  recruitMilitaryPersonnel,
+} from './data/militaryPromotions';
 import {
   buildEmergencyAlertForMetric,
   evaluateInstitutionalStability,
@@ -66,11 +98,14 @@ import {
 import {
   DEFAULT_CABINET,
   DEFAULT_VP,
+  getGameDifficulty,
+  getPoliticalClimateMode,
   INSTITUTIONS_PRESET,
   MILITARY_OPERATIONS_PRESET,
   resolvePartyId,
   SCENARIOS,
 } from './data/scenarios';
+import { DEBATE_MATCHUPS } from './data/debates';
 import { shiftJudiciaryClimate } from './data/institutionalActions';
 import { HeaderBar } from './components/HeaderBar';
 import {
@@ -78,6 +113,27 @@ import {
   TitleSetup,
 } from './components/TitleSetup';
 import { BriefingDesk } from './components/BriefingDesk';
+import { PresidentialDebateModal } from './components/PresidentialDebateModal';
+import { PresidentialPardonsModal } from './components/PresidentialPardonsModal';
+import { SupremeCourtModal } from './components/SupremeCourtModal';
+import { TradePolicyModal } from './components/TradePolicyModal';
+import { WhiteHouseToursModal } from './components/WhiteHouseToursModal';
+import {
+  INITIAL_SUPREME_COURT_BENCH,
+  SupremeCourtJustice,
+} from './data/supremeCourt';
+import { DEFAULT_TRADE_STANCES, TradePostureId } from './data/tradeWar';
+import {
+  ScheduledWhiteHouseTourRecord,
+  TourScreeningPosture,
+  WhiteHouseTourGroup,
+} from './data/whiteHouseTours';
+import {
+  NuclearStrikeProfileId,
+  NuclearStrikeRecord,
+  NuclearTargetCategory,
+  evaluateNuclearStrike,
+} from './data/nuclearCommand';
 import { PressAndPolls } from './components/PressAndPolls';
 import { CabinetView } from './components/CabinetView';
 import { SituationRoomView } from './components/SituationRoomView';
@@ -95,6 +151,8 @@ import { StateOfTheUnionModal } from './components/StateOfTheUnionModal';
 import { CapitolWhipModal } from './components/CapitolWhipModal';
 import { BudgetAllocationModal } from './components/BudgetAllocationModal';
 import { ImpeachmentModal, ResignModal } from './components/ImpeachmentModal';
+import { ExecutivePowersHub } from './components/ExecutivePowersHub';
+import { NominateJcsModal } from './components/NominateJcsModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { playDeskSound } from './utils/sound';
 import { normalizeMonthlyBriefing } from './utils/briefingMemos';
@@ -187,6 +245,7 @@ async function parseJsonResponse<T>(
   res: Response,
   fallbackError: string
 ): Promise<T> {
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
   const rawText = await res.text();
   const trimmed = rawText.trim();
   if (!trimmed) {
@@ -194,7 +253,7 @@ async function parseJsonResponse<T>(
       `${fallbackError} The server connection dropped before returning data (empty response, HTTP ${res.status}).`
     );
   }
-  if (trimmed.startsWith('<')) {
+  if (trimmed.startsWith('<') || contentType.includes('text/html')) {
     throw new Error(
       `The simulation server returned an unexpected HTML response (HTTP ${res.status}). The request may have timed out or the server is still starting—please try again.`
     );
@@ -213,27 +272,55 @@ async function parseJsonResponse<T>(
   return parsed;
 }
 
+async function waitForSimulationBackend(maxWaitMs = 10000): Promise<void> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    try {
+      const healthRes = await fetch('/api/health', {
+        method: 'GET',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      const ct = (healthRes.headers.get('content-type') || '').toLowerCase();
+      if (healthRes.ok && ct.includes('application/json')) {
+        const data = (await healthRes.json()) as { ok?: boolean };
+        if (data?.ok) return;
+      }
+    } catch {
+      // Server still booting or proxy reconnecting
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
 async function postSimulationApi<T>(
   url: string,
   body: unknown,
   fallbackError: string
 ): Promise<T> {
-  const maxAttempts = 2;
+  const maxAttempts = 4;
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 75000);
+
     try {
       const res = await fetch(url, {
         method: 'POST',
         cache: 'no-store',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
+      window.clearTimeout(timeoutId);
       return await parseJsonResponse<T>(res, fallbackError);
     } catch (err) {
+      window.clearTimeout(timeoutId);
       lastError = err;
       const msg = err instanceof Error ? err.message : '';
       const isTransient =
@@ -241,10 +328,19 @@ async function postSimulationApi<T>(
         msg.includes('unexpected HTML response') ||
         msg.includes('Failed to fetch') ||
         msg.includes('Load failed') ||
-        msg.includes('NetworkError');
+        msg.includes('NetworkError') ||
+        msg.includes('HTTP 502') ||
+        msg.includes('HTTP 503') ||
+        msg.includes('HTTP 504');
       if (attempt < maxAttempts && isTransient) {
-        await new Promise((resolve) => setTimeout(resolve, 900));
+        await waitForSimulationBackend(attempt === 1 ? 4500 : 8000);
+        await new Promise((resolve) => setTimeout(resolve, 600 * attempt));
         continue;
+      }
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error(
+          `${fallbackError} The request timed out after 75 seconds. Please try again.`
+        );
       }
       throw err;
     }
@@ -256,50 +352,68 @@ async function postSimulationApi<T>(
 function applyDeltas(
   metrics: NationalMetrics,
   blocs: VoterBlocs,
-  outcome: TurnOutcome
+  outcome: TurnOutcome,
+  gameDifficulty?: string
 ): { nextMetrics: NationalMetrics; nextBlocs: VoterBlocs } {
   const md = outcome.metricDeltas;
   const bd = outcome.voterBlocDeltas;
   const seatShift = outcome.midtermSeatShift;
+  const diff = getGameDifficulty(gameDifficulty);
+
+  const scalePoliticalDelta = (val: number) =>
+    val >= 0 ? val * diff.gainMultiplier : val * diff.lossMultiplier;
 
   const nextMetrics: NationalMetrics = {
-    approval: clamp(Number((metrics.approval + md.approval).toFixed(1)), 0, 95),
+    approval: clamp(
+      Number((metrics.approval + scalePoliticalDelta(md.approval)).toFixed(1)),
+      0,
+      95
+    ),
     congressSupport: clamp(
-      Number((metrics.congressSupport + md.congressSupport).toFixed(1)),
+      Number(
+        (
+          metrics.congressSupport + scalePoliticalDelta(md.congressSupport)
+        ).toFixed(1)
+      ),
       5,
       95
     ),
     gdpGrowth: clamp(
       Number((metrics.gdpGrowth + md.gdpGrowth).toFixed(2)),
-      -6.0,
-      8.5
+      -15.0,
+      22.0
     ),
     inflation: clamp(
       Number((metrics.inflation + md.inflation).toFixed(2)),
-      -1.0,
-      18.0
+      -12.0,
+      25.0
     ),
     unemployment: clamp(
       Number((metrics.unemployment + md.unemployment).toFixed(2)),
-      2.0,
-      16.0
+      1.0,
+      30.0
     ),
     diplomaticStanding: clamp(
-      Number((metrics.diplomaticStanding + md.diplomaticStanding).toFixed(1)),
+      Number(
+        (
+          metrics.diplomaticStanding +
+          scalePoliticalDelta(md.diplomaticStanding)
+        ).toFixed(1)
+      ),
       5,
       100
     ),
     nationalDebtTrillions: Math.max(
-      10,
+      0.01,
       Number(
         (metrics.nationalDebtTrillions + md.nationalDebtTrillions).toFixed(2)
       )
     ),
     houseSeats: seatShift
-      ? clamp(metrics.houseSeats + seatShift.houseDelta, 120, 315)
+      ? clamp(metrics.houseSeats + seatShift.houseDelta, 100, 340)
       : metrics.houseSeats,
     senateSeats: seatShift
-      ? clamp(metrics.senateSeats + seatShift.senateDelta, 30, 70)
+      ? clamp(metrics.senateSeats + seatShift.senateDelta, 25, 75)
       : metrics.senateSeats,
   };
 
@@ -370,6 +484,26 @@ export default function App() {
   const [military, setMilitary] = useState<MilitaryCommandState>(
     MILITARY_OPERATIONS_PRESET.fragile_boom
   );
+  const [militaryRoster, setMilitaryRoster] = useState<MilitaryServiceMember[]>(
+    () => createInitialMilitaryRoster()
+  );
+  const [promotionHistory, setPromotionHistory] = useState<
+    MilitaryPromotionRecord[]
+  >([]);
+  const [medalHistory, setMedalHistory] = useState<MilitaryMedalAwardRecord[]>(
+    []
+  );
+  const [theaterAssignments, setTheaterAssignments] = useState<
+    TheaterUnitAssignment[]
+  >(() => createDefaultTheaterAssignments());
+  const [resolvedTheaterEventMonths, setResolvedTheaterEventMonths] = useState<
+    Partial<Record<RegionalTheaterId, number>>
+  >({});
+  const [latestTheaterEventOutcome, setLatestTheaterEventOutcome] =
+    useState<TheaterSecurityEventOutcome | null>(null);
+  const [adminSuite, setAdminSuite] = useState<AdminSuiteState>(
+    () => createDefaultAdminSuiteState()
+  );
   const [diplomaticMissions, setDiplomaticMissions] = useState<
     DiplomaticMission[]
   >([]);
@@ -430,11 +564,48 @@ export default function App() {
   const [isNominatingVp, setIsNominatingVp] = useState(false);
   const [lastVpConfirmation, setLastVpConfirmation] =
     useState<VpNominationResult | null>(null);
+  const [isNominatingJcs, setIsNominatingJcs] = useState(false);
+  const [showNominateJcsModal, setShowNominateJcsModal] = useState(false);
+  const [lastJcsConfirmation, setLastJcsConfirmation] =
+    useState<JcsConfirmationResult | null>(null);
   const [dismissedOtherOfficials, setDismissedOtherOfficials] = useState<
     string[]
   >([]);
   const [reelectionCampaign, setReelectionCampaign] =
     useState<ReelectionCampaignState>(createDefaultCampaignState);
+  const [showDebateModal, setShowDebateModal] = useState(false);
+  const [showPardonsModal, setShowPardonsModal] = useState(false);
+  const [showSupremeCourtModal, setShowSupremeCourtModal] = useState(false);
+  const [supremeCourtBench, setSupremeCourtBench] = useState<
+    SupremeCourtJustice[]
+  >(() => INITIAL_SUPREME_COURT_BENCH);
+  const [resolvedCourtCaseIds, setResolvedCourtCaseIds] = useState<string[]>(
+    []
+  );
+  const [showTradePolicyModal, setShowTradePolicyModal] = useState(false);
+  const [tradeStances, setTradeStances] = useState<
+    Record<string, TradePostureId>
+  >(() => ({ ...DEFAULT_TRADE_STANCES }));
+  const [lastTradeActionMonth, setLastTradeActionMonth] = useState<
+    number | null
+  >(null);
+  const [showWhiteHouseToursModal, setShowWhiteHouseToursModal] =
+    useState(false);
+  const [lastWhiteHouseTourMonth, setLastWhiteHouseTourMonth] = useState<
+    number | null
+  >(null);
+  const [whiteHouseTourHistory, setWhiteHouseTourHistory] = useState<
+    ScheduledWhiteHouseTourRecord[]
+  >([]);
+  const [latestNuclearResult, setLatestNuclearResult] =
+    useState<NuclearStrikeRecord | null>(null);
+  const [nuclearStrikeHistory, setNuclearStrikeHistory] = useState<
+    NuclearStrikeRecord[]
+  >([]);
+  const [secretServiceProtection, setSecretServiceProtection] =
+    useState<boolean>(false);
+  const [lastSecretServiceBudgetMonth, setLastSecretServiceBudgetMonth] =
+    useState<number | null>(null);
   const [showReelectionPrompt, setShowReelectionPrompt] = useState(false);
   const [pendingScandal, setPendingScandal] =
     useState<CabinetScandalEvent | null>(null);
@@ -452,6 +623,8 @@ export default function App() {
   const [emergencyResolutions, setEmergencyResolutions] = useState<
     EmergencyResolutionRecord[]
   >([]);
+  const [executedPowers, setExecutedPowers] = useState<ExecutedPowerRecord[]>([]);
+  const [showExecutivePowersHub, setShowExecutivePowersHub] = useState(false);
   const [harmonyMeetingMonths, setHarmonyMeetingMonths] = useState<
     Partial<Record<CabinetDepartment, number>>
   >({});
@@ -514,7 +687,10 @@ export default function App() {
 
   useEffect(() => {
     if (phase !== 'PLAYING') return;
-    if (metrics.approval < 5) {
+    const impeachmentThreshold = getGameDifficulty(
+      profile.gameDifficulty
+    ).impeachmentApprovalThreshold;
+    if (metrics.approval < impeachmentThreshold) {
       if (
         !impeachmentAutoPrompted &&
         !pendingScandal &&
@@ -530,6 +706,7 @@ export default function App() {
   }, [
     phase,
     metrics.approval,
+    profile.gameDifficulty,
     impeachmentAutoPrompted,
     pendingScandal,
     activeEmergencyAlert,
@@ -575,6 +752,12 @@ export default function App() {
       lastIntelBriefMonth: lastIntelBriefMonth ?? undefined,
       lastSummitMonth: lastSummitMonth ?? undefined,
       collapseReason,
+      adminSuite,
+      militaryRoster,
+      promotionHistory,
+      medalHistory,
+      theaterAssignments,
+      resolvedTheaterEventMonths,
       updatedAt: new Date().toISOString(),
     };
     try {
@@ -596,6 +779,12 @@ export default function App() {
     blocs,
     cabinet,
     military,
+    militaryRoster,
+    promotionHistory,
+    medalHistory,
+    theaterAssignments,
+    resolvedTheaterEventMonths,
+    adminSuite,
     diplomaticMissions,
     institutions,
     newsFeed,
@@ -648,15 +837,23 @@ export default function App() {
     bg: PresidentProfile['background'],
     party: PartyId,
     bonuses: AppointeeBonuses,
-    jcs: SelectedAdministration['jointChiefsChair']
+    jcs: SelectedAdministration['jointChiefsChair'],
+    difficultyMode?: string,
+    gameDifficulty?: string
   ) => {
     const partyApprovalMod = party === 'independent' ? 2 : 0;
     const partyCongressMod = party === 'independent' ? -3 : 0;
+    const climateMod = getPoliticalClimateMode(difficultyMode).modifiers;
+    const diffMod = getGameDifficulty(gameDifficulty).startingModifiers;
 
     const m: NationalMetrics = {
       ...baseMetrics,
       approval: clamp(
-        baseMetrics.approval + (bonuses.approval || 0) + partyApprovalMod,
+        baseMetrics.approval +
+          (bonuses.approval || 0) +
+          partyApprovalMod +
+          climateMod.approval +
+          diffMod.approval,
         10,
         90
       ),
@@ -664,7 +861,9 @@ export default function App() {
         baseMetrics.congressSupport +
           (bonuses.congressSupport || 0) +
           (bg === 'senator' ? 5 : 0) +
-          partyCongressMod,
+          partyCongressMod +
+          climateMod.congressSupport +
+          diffMod.congressSupport,
         10,
         90
       ),
@@ -672,16 +871,26 @@ export default function App() {
         (
           baseMetrics.gdpGrowth +
           (bonuses.gdpGrowth || 0) +
-          (bg === 'executive' ? 0.2 : 0)
+          (bg === 'executive' ? 0.2 : 0) +
+          climateMod.gdpGrowth +
+          diffMod.gdpGrowth
         ).toFixed(2)
       ),
       inflation: Number(
-        Math.max(0.5, baseMetrics.inflation + (bonuses.inflation || 0)).toFixed(2)
+        Math.max(
+          -12.0,
+          baseMetrics.inflation +
+            (bonuses.inflation || 0) +
+            climateMod.inflation +
+            diffMod.inflation
+        ).toFixed(2)
       ),
       diplomaticStanding: clamp(
         baseMetrics.diplomaticStanding +
           (bonuses.diplomaticStanding || 0) +
-          (bg === 'commander' ? 6 : 0),
+          (bg === 'commander' ? 6 : 0) +
+          climateMod.diplomaticStanding +
+          diffMod.diplomaticStanding,
         10,
         100
       ),
@@ -691,7 +900,9 @@ export default function App() {
       workingClass: clamp(
         baseBlocs.workingClass +
           (bonuses.workingClass || 0) +
-          (party === 'democratic' ? 1 : 0),
+          (party === 'democratic' ? 1 : 0) +
+          climateMod.workingClass +
+          diffMod.blocOffset,
         10,
         90
       ),
@@ -699,7 +910,9 @@ export default function App() {
         baseBlocs.suburbanModerates +
           (bonuses.suburbanModerates || 0) +
           (bg === 'governor' ? 4 : 0) +
-          (party === 'independent' ? 4 : 0),
+          (party === 'independent' ? 4 : 0) +
+          climateMod.suburbanModerates +
+          diffMod.blocOffset,
         10,
         90
       ),
@@ -707,21 +920,27 @@ export default function App() {
         baseBlocs.techFinance +
           (bonuses.techFinance || 0) +
           (bg === 'executive' ? 5 : 0) +
-          (party === 'republican' ? 2 : 0),
+          (party === 'republican' ? 2 : 0) +
+          climateMod.techFinance +
+          diffMod.blocOffset,
         10,
         90
       ),
       seniors: clamp(
         baseBlocs.seniors +
           (bonuses.seniors || 0) +
-          (party === 'republican' ? 2 : 0),
+          (party === 'republican' ? 2 : 0) +
+          climateMod.seniors +
+          diffMod.blocOffset,
         10,
         90
       ),
       youngVoters: clamp(
         baseBlocs.youngVoters +
           (bonuses.youngVoters || 0) +
-          (party === 'democratic' ? 2 : 0),
+          (party === 'democratic' ? 2 : 0) +
+          climateMod.youngVoters +
+          diffMod.blocOffset,
         10,
         90
       ),
@@ -731,7 +950,9 @@ export default function App() {
       ...baseMilitary,
       jointChiefsChair: jcs,
       forceReadiness: clamp(
-        baseMilitary.forceReadiness + (bonuses.forceReadiness || 0),
+        baseMilitary.forceReadiness +
+          (bonuses.forceReadiness || 0) +
+          diffMod.forceReadiness,
         30,
         100
       ),
@@ -793,7 +1014,9 @@ export default function App() {
           nextProfile.background,
           resolvePartyId(nextProfile.party, nextProfile.coalition),
           administration.aggregatedBonuses,
-          administration.jointChiefsChair
+          administration.jointChiefsChair,
+          nextProfile.difficultyMode,
+          nextProfile.gameDifficulty
         );
 
         setProfile(nextProfile);
@@ -855,6 +1078,27 @@ export default function App() {
         setLastIntelBriefMonth(null);
         setLastSummitMonth(null);
         setLatestSummitOutcome(null);
+        setExecutedPowers([]);
+        setShowExecutivePowersHub(false);
+        setMilitaryRoster(createInitialMilitaryRoster());
+        setPromotionHistory([]);
+        setMedalHistory([]);
+        setTheaterAssignments(createDefaultTheaterAssignments());
+        setResolvedTheaterEventMonths({});
+        setLatestTheaterEventOutcome(null);
+        setSupremeCourtBench(INITIAL_SUPREME_COURT_BENCH);
+        setResolvedCourtCaseIds([]);
+        setTradeStances({ ...DEFAULT_TRADE_STANCES });
+        setLastTradeActionMonth(null);
+        setShowSupremeCourtModal(false);
+        setShowTradePolicyModal(false);
+        setShowWhiteHouseToursModal(false);
+        setLastWhiteHouseTourMonth(null);
+        setWhiteHouseTourHistory([]);
+        setLatestNuclearResult(null);
+        setNuclearStrikeHistory([]);
+        setSecretServiceProtection(false);
+        setLastSecretServiceBudgetMonth(null);
         setActiveTab('briefing');
         setPhase('PLAYING');
       } catch (err) {
@@ -869,17 +1113,32 @@ export default function App() {
       return;
     }
 
+    const resolvedProfile: PresidentProfile = {
+      ...nextProfile,
+      ...(scenario.isHistorical && scenario.historicalYear && !nextProfile.startingYear
+        ? { startingYear: scenario.historicalYear }
+        : {}),
+      ...(scenario.isHistorical && !nextProfile.historicalScenarioId
+        ? { historicalScenarioId: scenario.id }
+        : {}),
+      ...(scenario.historicalBenchmarkNote && !nextProfile.historicalBenchmarkNote
+        ? { historicalBenchmarkNote: scenario.historicalBenchmarkNote }
+        : {}),
+    };
+
     const { m, b, mil } = applyStartingModifiers(
       scenario.initialMetrics,
       scenario.initialBlocs,
       scenario.initialMilitary,
-      nextProfile.background,
-      resolvePartyId(nextProfile.party, nextProfile.coalition),
+      resolvedProfile.background,
+      resolvePartyId(resolvedProfile.party, resolvedProfile.coalition),
       administration.aggregatedBonuses,
-      administration.jointChiefsChair
+      administration.jointChiefsChair,
+      resolvedProfile.difficultyMode,
+      resolvedProfile.gameDifficulty
     );
 
-    setProfile(nextProfile);
+    setProfile(resolvedProfile);
     setVicePresident(administration.vicePresident);
     setScenarioId(scenario.id);
     setScenarioTitle(scenario.title);
@@ -911,6 +1170,8 @@ export default function App() {
     setLastConfirmationResult(null);
     setLatestDismissalResult(null);
     setLastVpConfirmation(null);
+    setLastJcsConfirmation(null);
+    setShowNominateJcsModal(false);
     setDismissedOtherOfficials([]);
     setReelectionCampaign(createDefaultCampaignState());
     setShowReelectionPrompt(false);
@@ -939,6 +1200,27 @@ export default function App() {
     setLastIntelBriefMonth(null);
     setLastSummitMonth(null);
     setLatestSummitOutcome(null);
+    setExecutedPowers([]);
+    setShowExecutivePowersHub(false);
+    setMilitaryRoster(createInitialMilitaryRoster());
+    setPromotionHistory([]);
+    setMedalHistory([]);
+    setSupremeCourtBench(INITIAL_SUPREME_COURT_BENCH);
+    setResolvedCourtCaseIds([]);
+    setTradeStances({ ...DEFAULT_TRADE_STANCES });
+    setLastTradeActionMonth(null);
+    setShowSupremeCourtModal(false);
+    setShowTradePolicyModal(false);
+    setShowWhiteHouseToursModal(false);
+    setLastWhiteHouseTourMonth(null);
+    setWhiteHouseTourHistory([]);
+    setLatestNuclearResult(null);
+    setNuclearStrikeHistory([]);
+    setSecretServiceProtection(false);
+    setLastSecretServiceBudgetMonth(null);
+    setTheaterAssignments(createDefaultTheaterAssignments());
+    setResolvedTheaterEventMonths({});
+    setLatestTheaterEventOutcome(null);
     setActiveTab('briefing');
     setPhase('PLAYING');
   };
@@ -992,6 +1274,8 @@ export default function App() {
     setLastConfirmationResult(null);
     setLatestDismissalResult(null);
     setLastVpConfirmation(null);
+    setLastJcsConfirmation(null);
+    setShowNominateJcsModal(false);
     setDismissedOtherOfficials([]);
     setReelectionCampaign(
       savedCareer.reelectionCampaign || createDefaultCampaignState()
@@ -1050,6 +1334,23 @@ export default function App() {
         : null
     );
     setLatestSummitOutcome(null);
+    setExecutedPowers(savedCareer.executedPowers || []);
+    setShowExecutivePowersHub(false);
+    setShowWhiteHouseToursModal(false);
+    setLatestNuclearResult(null);
+    setNuclearStrikeHistory([]);
+    setMilitaryRoster(
+      savedCareer.militaryRoster && savedCareer.militaryRoster.length > 0
+        ? savedCareer.militaryRoster
+        : createInitialMilitaryRoster()
+    );
+    setPromotionHistory(savedCareer.promotionHistory || []);
+    setMedalHistory(savedCareer.medalHistory || []);
+    setTheaterAssignments(
+      savedCareer.theaterAssignments || createDefaultTheaterAssignments()
+    );
+    setResolvedTheaterEventMonths(savedCareer.resolvedTheaterEventMonths || {});
+    setLatestTheaterEventOutcome(null);
     setActiveTab('briefing');
     setPhase(
       savedCareer.phase === 'SIMULATING' ? 'PLAYING' : savedCareer.phase
@@ -1186,6 +1487,129 @@ export default function App() {
       );
     } finally {
       setReplacingCabinetId(null);
+    }
+  };
+
+  const handleNominateJcs = async (replacementDirection: string) => {
+    if (isNominatingJcs) return;
+    setErrorMsg(null);
+    setLastJcsConfirmation(null);
+    setIsNominatingJcs(true);
+    playDeskSound('select', muted);
+
+    try {
+      const data = await postSimulationApi<JcsConfirmationResult>(
+        '/api/replace-joint-chiefs',
+        {
+          profile,
+          currentJcs: military.jointChiefsChair,
+          replacementDirection,
+          metrics,
+        },
+        'Failed to hold Senate Armed Services confirmation vote for Joint Chiefs Chair.'
+      );
+
+      if (data.approved) {
+        setMilitary((prev) => ({
+          ...prev,
+          jointChiefsChair: {
+            name: data.nomineeName,
+            branch: data.branch,
+            doctrine: data.doctrine,
+          },
+          forceReadiness: clamp(
+            Math.round(prev.forceReadiness + 3),
+            30,
+            100
+          ),
+        }));
+      }
+
+      setMetrics((prev) => {
+        const nextMetrics: NationalMetrics = {
+          ...prev,
+          congressSupport: clamp(
+            Number((prev.congressSupport + (data.congressDelta || 0)).toFixed(1)),
+            5,
+            95
+          ),
+          approval: clamp(
+            Number((prev.approval + (data.approvalDelta || 0)).toFixed(1)),
+            0,
+            95
+          ),
+        };
+        if (reelectionCampaign.decision === 'running') {
+          const proj = computeCampaignProjection(
+            nextMetrics,
+            reelectionCampaign.campaignMomentum
+          );
+          setReelectionCampaign((c) => ({
+            ...c,
+            projectedVoteShare: proj.projectedVoteShare,
+            battlegroundEdge: proj.battlegroundEdge,
+          }));
+        }
+        return nextMetrics;
+      });
+
+      setLegislativeRecords((prev) => [
+        ...prev,
+        {
+          id: `leg-jcs-${Date.now()}`,
+          month: currentMonth,
+          recordType: 'Institutional',
+          title: data.approved
+            ? `Confirmed ${data.nomineeName} as Joint Chiefs Chair (${data.voteMarginLabel})`
+            : `Senate Rejected ${data.nomineeName} for Joint Chiefs Chair (${data.voteMarginLabel})`,
+          summary: data.committeeSummary,
+          outcomeStatus: data.approved
+            ? data.senateYea <= 54
+              ? 'Compromise'
+              : 'Enacted'
+            : 'Blocked',
+          approvalImpact: data.approvalDelta || 0,
+        },
+      ]);
+
+      setMilestones((prev) => [
+        ...prev,
+        {
+          id: `ms-jcs-nom-${Date.now()}`,
+          month: currentMonth,
+          category: 'Security',
+          title: data.approved
+            ? `Joint Chiefs Chair Confirmed: ${data.nomineeName} (${data.voteMarginLabel})`
+            : `Joint Chiefs Nomination Rejected: ${data.nomineeName} (${data.voteMarginLabel})`,
+          description: data.approved
+            ? `Senate Armed Services Committee confirmed ${data.nomineeName} (${data.branch} · ${data.doctrine}) to lead the Joint Staff.`
+            : `Senate declined to confirm ${data.nomineeName}; Interim Acting Chair remains in place.`,
+        },
+      ]);
+
+      setNewsFeed((prev) =>
+        mergeNewsStories(prev, [
+          {
+            id: `jcs-nom-${Date.now()}`,
+            month: currentMonth,
+            outlet: 'Capitol Dispatch',
+            category: 'defense',
+            headline: data.confirmationHeadline,
+            summary: `${data.voteMarginLabel}. ${data.committeeSummary}`,
+            tone: data.approved ? 'positive' : 'critical',
+          },
+        ])
+      );
+
+      setLastJcsConfirmation(data);
+      setShowNominateJcsModal(false);
+      playDeskSound('alert', muted);
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error ? err.message : 'Joint Chiefs nomination failed.'
+      );
+    } finally {
+      setIsNominatingJcs(false);
     }
   };
 
@@ -1529,6 +1953,591 @@ export default function App() {
       prev.trim() ? `${prev.trim()}\n\n${addition}` : addition
     );
     setActiveTab('briefing');
+  };
+
+  const handleResolveClemency = (result: {
+    petitionTitle: string;
+    actionLabel: string;
+    approvalDelta: number;
+    congressDelta: number;
+    justiceLoyaltyDelta: number;
+    blocImpacts: Partial<VoterBlocs>;
+    headline: string;
+    newsTone: 'positive' | 'neutral' | 'critical';
+  }) => {
+    setMetrics((prev) => ({
+      ...prev,
+      approval: clamp(
+        Number((prev.approval + result.approvalDelta).toFixed(1)),
+        0,
+        95
+      ),
+      congressSupport: clamp(
+        Number(
+          (prev.congressSupport + result.congressDelta).toFixed(1)
+        ),
+        5,
+        95
+      ),
+    }));
+
+    setBlocs((prev) => {
+      const next = { ...prev };
+      (Object.keys(result.blocImpacts) as (keyof VoterBlocs)[]).forEach((bKey) => {
+        const delta = result.blocImpacts[bKey] || 0;
+        next[bKey] = clamp(next[bKey] + delta, 0, 100);
+      });
+      return next;
+    });
+
+    setLegislativeRecords((prev) => [
+      ...prev,
+      {
+        id: `leg-clemency-${Date.now()}`,
+        month: currentMonth,
+        recordType: 'Executive Order',
+        title: `Clemency Board: ${result.petitionTitle} (${result.actionLabel})`,
+        summary: result.headline,
+        outcomeStatus: 'Enacted',
+        approvalImpact: result.approvalDelta,
+      },
+    ]);
+
+    setMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-clemency-${Date.now()}`,
+        month: currentMonth,
+        category: 'Political',
+        title: `Executive Clemency Action: ${result.petitionTitle}`,
+        description: `${result.actionLabel}. ${result.headline}`,
+      },
+    ]);
+
+    setNewsFeed((prev) => [
+      ...prev,
+      {
+        id: `news-clemency-${Date.now()}`,
+        month: currentMonth,
+        outlet:
+          result.newsTone === 'positive'
+            ? 'Chronicle & Herald'
+            : result.newsTone === 'critical'
+            ? 'National Watchdog'
+            : 'Capital Dispatch',
+        category: 'politics',
+        headline: result.headline,
+        summary: `Presidential Clemency Board recommendation executed for ${result.petitionTitle}. Action: ${result.actionLabel}.`,
+        tone: result.newsTone,
+      },
+    ]);
+
+    playDeskSound('stamp', muted);
+    setShowPardonsModal(false);
+  };
+
+  const handleResolveCourtCase = (result: {
+    caseId: string;
+    caseName: string;
+    strategyLabel: string;
+    upheld: boolean;
+    voteLabel: string;
+    approvalDelta: number;
+    congressDelta: number;
+    gdpDelta: number;
+    headline: string;
+    rulingSummary: string;
+  }) => {
+    setResolvedCourtCaseIds((prev) =>
+      prev.includes(result.caseId) ? prev : [...prev, result.caseId]
+    );
+
+    setMetrics((prev) => ({
+      ...prev,
+      approval: clamp(
+        Number((prev.approval + result.approvalDelta).toFixed(1)),
+        0,
+        95
+      ),
+      congressSupport: clamp(
+        Number((prev.congressSupport + result.congressDelta).toFixed(1)),
+        5,
+        95
+      ),
+      gdpGrowth: clamp(
+        Number((prev.gdpGrowth + result.gdpDelta).toFixed(1)),
+        -12,
+        14
+      ),
+    }));
+
+    setInstitutions((prev) => ({
+      ...prev,
+      pendingCourtNote: `${result.caseName} (${result.voteLabel}): ${result.rulingSummary}`,
+    }));
+
+    setLegislativeRecords((prev) => [
+      ...prev,
+      {
+        id: `leg-scotus-${Date.now()}`,
+        month: currentMonth,
+        recordType: 'Institutional',
+        title: `Supreme Court Ruling (${result.voteLabel}): ${result.caseName}`,
+        summary: `Brief: ${result.strategyLabel}. ${result.rulingSummary}`,
+        outcomeStatus: result.upheld ? 'Enacted' : 'Blocked',
+        approvalImpact: result.approvalDelta,
+      },
+    ]);
+
+    setMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-scotus-${Date.now()}`,
+        month: currentMonth,
+        category: 'Constitutional',
+        title: `${result.caseName}: ${result.voteLabel}`,
+        description: result.rulingSummary,
+      },
+    ]);
+
+    setNewsFeed((prev) => [
+      ...prev,
+      {
+        id: `news-scotus-${Date.now()}`,
+        month: currentMonth,
+        outlet: 'Supreme Court Wire',
+        category: 'politics',
+        headline: result.headline,
+        summary: `${result.voteLabel} — ${result.rulingSummary}`,
+        tone: result.upheld ? 'positive' : 'critical',
+      },
+    ]);
+
+    playDeskSound(result.upheld ? 'stamp' : 'alert', muted);
+  };
+
+  const handleConfirmCourtNominee = (result: {
+    replacedJusticeId: string;
+    replacedJusticeName: string;
+    newJustice: SupremeCourtJustice;
+    approved: boolean;
+    senateYea: number;
+    senateNay: number;
+    derivedClimate: InstitutionalState['judiciaryClimate'];
+    approvalDelta: number;
+    congressDelta: number;
+    blocImpacts: Partial<VoterBlocs>;
+    headline: string;
+    summary: string;
+  }) => {
+    if (result.approved) {
+      setSupremeCourtBench((prev) =>
+        prev.map((j) =>
+          j.id === result.replacedJusticeId ? result.newJustice : j
+        )
+      );
+      setInstitutions((prev) => ({
+        ...prev,
+        judiciaryClimate: result.derivedClimate,
+        pendingCourtNote: `${result.newJustice.name} confirmed (${result.senateYea}–${result.senateNay}) to replace ${result.replacedJusticeName}.`,
+      }));
+    }
+
+    setMetrics((prev) => ({
+      ...prev,
+      approval: clamp(
+        Number((prev.approval + result.approvalDelta).toFixed(1)),
+        0,
+        95
+      ),
+      congressSupport: clamp(
+        Number((prev.congressSupport + result.congressDelta).toFixed(1)),
+        5,
+        95
+      ),
+    }));
+
+    setBlocs((prev) => {
+      const next = { ...prev };
+      (Object.keys(result.blocImpacts) as (keyof VoterBlocs)[]).forEach(
+        (bKey) => {
+          const delta = result.blocImpacts[bKey] || 0;
+          next[bKey] = clamp(next[bKey] + delta, 5, 95);
+        }
+      );
+      return next;
+    });
+
+    setLegislativeRecords((prev) => [
+      ...prev,
+      {
+        id: `leg-nom-${Date.now()}`,
+        month: currentMonth,
+        recordType: 'Institutional',
+        title: result.approved
+          ? `SCOTUS Confirmation: ${result.newJustice.name} (${result.senateYea}–${result.senateNay})`
+          : `SCOTUS Rejection: ${result.newJustice.name} (${result.senateYea}–${result.senateNay})`,
+        summary: result.summary,
+        outcomeStatus: result.approved ? 'Enacted' : 'Blocked',
+        approvalImpact: result.approvalDelta,
+      },
+    ]);
+
+    setMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-nom-${Date.now()}`,
+        month: currentMonth,
+        category: 'Constitutional',
+        title: result.approved
+          ? `Appointed Justice ${result.newJustice.name}`
+          : `Senate Rejected Nominee ${result.newJustice.name}`,
+        description: result.summary,
+      },
+    ]);
+
+    setNewsFeed((prev) => [
+      ...prev,
+      {
+        id: `news-nom-${Date.now()}`,
+        month: currentMonth,
+        outlet: 'Capitol Hill Ledger',
+        category: 'politics',
+        headline: result.headline,
+        summary: result.summary,
+        tone: result.approved ? 'positive' : 'critical',
+      },
+    ]);
+
+    playDeskSound(result.approved ? 'stamp' : 'alert', muted);
+  };
+
+  const handleEnactTradePackage = (result: {
+    stances: Record<string, TradePostureId>;
+    gdpDelta: number;
+    inflationDelta: number;
+    debtDeltaTrillions: number;
+    diplomaticDelta: number;
+    approvalDelta: number;
+    blocImpacts: Partial<VoterBlocs>;
+    retaliationSummary: string;
+    overallRisk: 'Low' | 'Moderate' | 'High' | 'Severe';
+    headline: string;
+    newsTone: 'positive' | 'neutral' | 'critical';
+  }) => {
+    setTradeStances(result.stances);
+    setLastTradeActionMonth(currentMonth);
+
+    setMetrics((prev) => ({
+      ...prev,
+      approval: clamp(
+        Number((prev.approval + result.approvalDelta).toFixed(1)),
+        0,
+        95
+      ),
+      gdpGrowth: clamp(
+        Number((prev.gdpGrowth + result.gdpDelta).toFixed(2)),
+        -12,
+        14
+      ),
+      inflation: clamp(
+        Number((prev.inflation + result.inflationDelta).toFixed(2)),
+        -8,
+        24
+      ),
+      nationalDebtTrillions: Math.max(
+        0.01,
+        Number((prev.nationalDebtTrillions + result.debtDeltaTrillions).toFixed(2))
+      ),
+      diplomaticStanding: clamp(
+        Number((prev.diplomaticStanding + result.diplomaticDelta).toFixed(1)),
+        5,
+        100
+      ),
+    }));
+
+    setBlocs((prev) => {
+      const next = { ...prev };
+      (Object.keys(result.blocImpacts) as (keyof VoterBlocs)[]).forEach(
+        (bKey) => {
+          const delta = result.blocImpacts[bKey] || 0;
+          next[bKey] = clamp(next[bKey] + delta, 5, 95);
+        }
+      );
+      return next;
+    });
+
+    setLegislativeRecords((prev) => [
+      ...prev,
+      {
+        id: `leg-trade-${Date.now()}`,
+        month: currentMonth,
+        recordType: 'Executive Order',
+        title: `Trade & Tariff Proclamation (${result.overallRisk} Retaliation Risk)`,
+        summary: result.retaliationSummary,
+        outcomeStatus: 'Enacted',
+        approvalImpact: result.approvalDelta,
+      },
+    ]);
+
+    setMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-trade-${Date.now()}`,
+        month: currentMonth,
+        category: 'Economic',
+        title: result.headline,
+        description: result.retaliationSummary,
+      },
+    ]);
+
+    setNewsFeed((prev) => [
+      ...prev,
+      {
+        id: `news-trade-${Date.now()}`,
+        month: currentMonth,
+        outlet: 'Financial Times Wire',
+        category: 'economy',
+        headline: result.headline,
+        summary: result.retaliationSummary,
+        tone: result.newsTone,
+      },
+    ]);
+
+    playDeskSound('stamp', muted);
+    setShowTradePolicyModal(false);
+  };
+
+  const handleScheduleWhiteHouseTour = (payload: {
+    group: WhiteHouseTourGroup;
+    posture: TourScreeningPosture;
+    approvalDelta: number;
+    readinessDelta: number;
+    blocImpacts: Partial<VoterBlocs>;
+  }) => {
+    setLastWhiteHouseTourMonth(currentMonth);
+
+    setMetrics((prev) => ({
+      ...prev,
+      approval: clamp(
+        Number((prev.approval + payload.approvalDelta).toFixed(1)),
+        0,
+        95
+      ),
+    }));
+
+    setMilitary((prev) => ({
+      ...prev,
+      forceReadiness: clamp(
+        Number((prev.forceReadiness + payload.readinessDelta).toFixed(1)),
+        0,
+        100
+      ),
+    }));
+
+    setBlocs((prev) => {
+      const next = { ...prev };
+      (Object.keys(payload.blocImpacts) as (keyof VoterBlocs)[]).forEach(
+        (bKey) => {
+          const delta = payload.blocImpacts[bKey] || 0;
+          next[bKey] = clamp(Number((next[bKey] + delta).toFixed(1)), 5, 95);
+        }
+      );
+      return next;
+    });
+
+    setWhiteHouseTourHistory((prev) => [
+      ...prev,
+      {
+        id: `wh-tour-${currentMonth}-${Date.now()}`,
+        month: currentMonth,
+        groupId: payload.group.id,
+        groupName: payload.group.name,
+        routeLabel: payload.group.routeLabel,
+        posture: payload.posture,
+        approvalDelta: payload.approvalDelta,
+        readinessDelta: payload.readinessDelta,
+        headline: payload.group.headline,
+      },
+    ]);
+
+    setMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-tour-${Date.now()}`,
+        month: currentMonth,
+        category: 'Political',
+        title: `White House Tour: ${payload.group.name}`,
+        description: `${payload.group.routeLabel} · Approval +${payload.approvalDelta.toFixed(1)}%, Security Readiness ${payload.readinessDelta.toFixed(1)}%.`,
+      },
+    ]);
+
+    setNewsFeed((prev) => [
+      ...prev,
+      {
+        id: `news-tour-${Date.now()}`,
+        month: currentMonth,
+        outlet: 'Capitol Dispatch',
+        category: 'politics',
+        headline: payload.group.headline,
+        summary: payload.group.pressSummary,
+        tone: 'positive',
+      },
+    ]);
+
+    playDeskSound('stamp', muted);
+  };
+
+  const handleExecuteNuclearStrike = (params: {
+    targetCategory: NuclearTargetCategory;
+    targetName: string;
+    profileId: NuclearStrikeProfileId;
+    requireCongressApproval: boolean;
+  }) => {
+    const result = evaluateNuclearStrike({
+      currentMonth,
+      targetCategory: params.targetCategory,
+      targetName: params.targetName,
+      profileId: params.profileId,
+      requireCongressApproval: params.requireCongressApproval,
+      metrics,
+      military,
+    });
+
+    setLatestNuclearResult(result);
+    setNuclearStrikeHistory((prev) => [...prev, result]);
+
+    setMetrics((prev) => ({
+      ...prev,
+      approval: clamp(
+        Number((prev.approval + result.metricDeltas.approval).toFixed(1)),
+        0,
+        95
+      ),
+      congressSupport: clamp(
+        Number(
+          (prev.congressSupport + result.metricDeltas.congressSupport).toFixed(
+            1
+          )
+        ),
+        5,
+        95
+      ),
+      diplomaticStanding: clamp(
+        Number(
+          (
+            prev.diplomaticStanding + result.metricDeltas.diplomaticStanding
+          ).toFixed(1)
+        ),
+        5,
+        100
+      ),
+      gdpGrowth: clamp(
+        Number((prev.gdpGrowth + result.metricDeltas.gdpGrowth).toFixed(2)),
+        -12,
+        14
+      ),
+      inflation: clamp(
+        Number((prev.inflation + result.metricDeltas.inflation).toFixed(2)),
+        -8,
+        24
+      ),
+    }));
+
+    setMilitary((prev) => ({
+      ...prev,
+      defconLevel: result.executed
+        ? 1
+        : (Math.max(1, prev.defconLevel - 1) as 1 | 2 | 3 | 4 | 5),
+      intelThreatLevel: result.executed ? 'Severe' : prev.intelThreatLevel,
+      forceReadiness: clamp(
+        Number(
+          (prev.forceReadiness + result.metricDeltas.forceReadiness).toFixed(1)
+        ),
+        10,
+        100
+      ),
+      operations: result.executed
+        ? [
+            {
+              id: `nuke-op-${Date.now()}`,
+              name: `STRATCOM Strike: ${result.targetName}`,
+              region: result.targetName,
+              posture: 'Active Strike',
+              personnelCount: 'Strategic Triad Wings & Missile Commands',
+              statusNote: result.summary,
+            },
+            ...prev.operations,
+          ]
+        : prev.operations,
+    }));
+
+    setBlocs((prev) => {
+      const next = { ...prev };
+      (Object.keys(result.blocDeltas) as (keyof VoterBlocs)[]).forEach((bKey) => {
+        const delta = result.blocDeltas[bKey] || 0;
+        next[bKey] = clamp(Math.round(next[bKey] + delta), 5, 95);
+      });
+      return next;
+    });
+
+    setCabinet((prev) =>
+      prev.map((member) => {
+        const nextLoyalty = clamp(
+          Math.round(member.loyalty + result.cabinetLoyaltyDelta),
+          10,
+          98
+        );
+        const nextStatus: CabinetMember['status'] =
+          nextLoyalty >= 65
+            ? 'Aligned'
+            : nextLoyalty >= 42
+            ? 'Cautious'
+            : 'Strained';
+        return {
+          ...member,
+          loyalty: nextLoyalty,
+          status: nextStatus,
+        };
+      })
+    );
+
+    if (result.executed && result.targetCategory === 'state') {
+      setInstitutions((prev) => ({
+        ...prev,
+        judiciaryClimate: 'Hostile',
+        pendingCourtNote: `Emergency Supreme Court petitions filed following domestic nuclear deployment against ${result.targetName}.`,
+      }));
+    }
+
+    setLegislativeRecords((prev) => [
+      ...prev,
+      {
+        id: `leg-nuke-${Date.now()}`,
+        month: currentMonth,
+        recordType: result.requireCongressApproval
+          ? 'Legislation'
+          : 'Executive Order',
+        title: `${result.warPowersStatus}: ${result.targetName}`,
+        summary: result.summary,
+        outcomeStatus: result.executed ? 'Enacted' : 'Blocked',
+        approvalImpact: result.metricDeltas.approval,
+      },
+    ]);
+
+    setMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-nuke-${Date.now()}`,
+        month: currentMonth,
+        category: result.executed ? 'Security' : 'Constitutional',
+        title: result.headline,
+        description: result.summary,
+      },
+    ]);
+
+    setNewsFeed((prev) => [...prev, result.mediaHeadline]);
+    playDeskSound(result.executed ? 'alert' : 'stamp', muted);
   };
 
   const handleQueueSecurityOrder = (orderText: string, speechText: string) => {
@@ -2139,6 +3148,28 @@ export default function App() {
     setIsResolvingSituation(true);
     playDeskSound('stamp', muted);
 
+    const targetTheater = resolveCountryToTheater(params.targetCountry);
+    const theaterInfluence = computeTheaterInfluence(
+      targetTheater.id,
+      theaterAssignments,
+      militaryRoster,
+      military
+    );
+    const theaterContextPayload = {
+      theaterId: targetTheater.id,
+      theaterName: targetTheater.name,
+      commandCode: targetTheater.commandCode,
+      assignedUnitCount: theaterInfluence.unitCount,
+      assignedUnitNames: theaterInfluence.assignedUnits.map(
+        (d) => d.unit.name
+      ),
+      diplomacyOddsBonusPct: theaterInfluence.diplomacyOddsBonusPct,
+      securityOddsBonusPct: theaterInfluence.securityOddsBonusPct,
+      operationSuccessProbabilityPct:
+        theaterInfluence.operationSuccessProbabilityPct,
+      deterrenceLabel: theaterInfluence.deterrenceLabel,
+    };
+
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = await postSimulationApi<any>(
@@ -2155,6 +3186,7 @@ export default function App() {
           targetCountry: params.targetCountry,
           orderSummary: cleanOrder,
           seekCongressAuthorization: params.seekCongressAuthorization,
+          theaterContext: theaterContextPayload,
         },
         'Situation Room action failed.'
       );
@@ -2381,6 +3413,7 @@ export default function App() {
         mediaReactions: stampedMedia,
         metricDeltas: md,
         voterBlocDeltas: vd,
+        theaterDeploymentContext: theaterContextPayload,
       });
       playDeskSound('alert', muted);
     } catch (err) {
@@ -2998,7 +4031,15 @@ export default function App() {
         month: currentMonth,
         newsWire: newWireItems,
       };
-      const { nextMetrics, nextBlocs } = applyDeltas(metrics, blocs, outcome);
+      const { nextMetrics, nextBlocs } = applyDeltas(
+        metrics,
+        blocs,
+        outcome,
+        profile.gameDifficulty
+      );
+      const difficultyOpsOffset = getGameDifficulty(
+        profile.gameDifficulty
+      ).opsOddsOffset;
 
       // Advance active Diplomatic Missions (3-6 turn probability-based envoy missions)
       let missionDiplomaticDelta = 0;
@@ -3012,8 +4053,25 @@ export default function App() {
 
           const nextElapsed = mission.turnsElapsed + 1;
           const isFinalTurn = nextElapsed >= mission.durationTurns;
-          const rollSucceeded =
-            Math.random() * 100 < mission.successProbability;
+          const missionTheater = resolveCountryToTheater(mission.targetCountry);
+          const currentTheaterBonus = computeTheaterInfluence(
+            missionTheater.id,
+            theaterAssignments,
+            militaryRoster,
+            military
+          ).diplomacyOddsBonusPct;
+          const baseDispatchBonus =
+            mission.theaterBonusAtDispatch ?? currentTheaterBonus;
+          const effectiveRollOdds = clamp(
+            Math.round(
+              mission.successProbability +
+                (currentTheaterBonus - baseDispatchBonus) +
+                difficultyOpsOffset
+            ),
+            20,
+            96
+          );
+          const rollSucceeded = Math.random() * 100 < effectiveRollOdds;
 
           let turnDelta = 0;
           let nextStatus: DiplomaticMission['status'] = 'In Progress';
@@ -3228,7 +4286,7 @@ export default function App() {
             100
           ),
           defenseBudgetBillions: Math.max(
-            400,
+            1,
             Math.round(
               prev.defenseBudgetBillions + (mu.defenseBudgetDeltaBillions || 0)
             )
@@ -3434,6 +4492,13 @@ export default function App() {
     lastRegionalOutreachMonth: lastRegionalOutreachMonth ?? undefined,
     lastIntelBriefMonth: lastIntelBriefMonth ?? undefined,
     lastSummitMonth: lastSummitMonth ?? undefined,
+    executedPowers,
+    militaryRoster,
+    promotionHistory,
+    medalHistory,
+    theaterAssignments,
+    resolvedTheaterEventMonths,
+    secretServiceProtection,
     collapseReason,
     updatedAt: new Date().toISOString(),
   };
@@ -3449,6 +4514,13 @@ export default function App() {
   }) => {
     playDeskSound('stamp', muted);
     const missionId = `envoy-${currentMonth}-${Date.now()}`;
+    const dispatchTheater = resolveCountryToTheater(params.targetCountry);
+    const dispatchTheaterBonus = computeTheaterInfluence(
+      dispatchTheater.id,
+      theaterAssignments,
+      militaryRoster,
+      military
+    ).diplomacyOddsBonusPct;
     const newMission: DiplomaticMission = {
       id: missionId,
       targetCountry: params.targetCountry,
@@ -3459,10 +4531,11 @@ export default function App() {
       durationTurns: clamp(Math.round(params.durationTurns), 3, 6),
       turnsElapsed: 0,
       successProbability: params.successProbability,
+      theaterBonusAtDispatch: dispatchTheaterBonus,
       cumulativeDelta: 0,
       status: 'In Progress',
       startedMonth: currentMonth,
-      latestUpdate: `Dispatched to ${params.targetCountry} on a ${params.durationTurns}-turn mandate (${params.successProbability}% odds). Updates roll each monthly turn.`,
+      latestUpdate: `Dispatched to ${params.targetCountry} (${dispatchTheater.commandCode}) on a ${params.durationTurns}-turn mandate (${params.successProbability}% odds). Updates roll each monthly turn.`,
     };
 
     setDiplomaticMissions((prev) => [newMission, ...prev]);
@@ -3662,8 +4735,8 @@ export default function App() {
       ),
       unemployment: clamp(
         Number((metrics.unemployment + (d.unemployment || 0)).toFixed(2)),
-        2.0,
-        16.0
+        1.0,
+        30.0
       ),
       diplomaticStanding: clamp(
         Number(
@@ -3673,7 +4746,7 @@ export default function App() {
         100
       ),
       nationalDebtTrillions: Math.max(
-        10,
+        0.01,
         Number(
           (
             metrics.nationalDebtTrillions +
@@ -3691,7 +4764,7 @@ export default function App() {
         fedFundsRate: clamp(
           Number((prev.fedFundsRate + (option.fedFundsDelta || 0)).toFixed(2)),
           0.25,
-          12
+          20
         ),
         fedStance: option.fedStance || prev.fedStance,
         fedChairNote: `Emergency coordination enacted following ${option.title} in Month ${currentMonth}.`,
@@ -3793,6 +4866,203 @@ export default function App() {
     );
 
     setActiveEmergencyAlert(null);
+  };
+
+  const handleExecuteExecutivePower = (power: ExecutivePowerDefinition) => {
+    playDeskSound('stamp', muted);
+    const nextMetrics: NationalMetrics = {
+      ...metrics,
+      approval: clamp(
+        Number(
+          (metrics.approval + (power.metricImpacts.approval || 0)).toFixed(1)
+        ),
+        1,
+        99
+      ),
+      congressSupport: clamp(
+        Number(
+          (
+            metrics.congressSupport +
+            (power.metricImpacts.congressSupport || 0)
+          ).toFixed(1)
+        ),
+        5,
+        95
+      ),
+      gdpGrowth: Number(
+        (metrics.gdpGrowth + (power.metricImpacts.gdpGrowth || 0)).toFixed(1)
+      ),
+      inflation: Number(
+        Math.max(
+          -12.0,
+          metrics.inflation + (power.metricImpacts.inflation || 0)
+        ).toFixed(1)
+      ),
+      unemployment: Number(
+        Math.max(
+          1.0,
+          metrics.unemployment + (power.metricImpacts.unemployment || 0)
+        ).toFixed(1)
+      ),
+      diplomaticStanding: clamp(
+        Number(
+          (
+            metrics.diplomaticStanding +
+            (power.metricImpacts.diplomaticStanding || 0)
+          ).toFixed(1)
+        ),
+        10,
+        100
+      ),
+      nationalDebtTrillions: Number(
+        (
+          metrics.nationalDebtTrillions +
+          (power.metricImpacts.nationalDebtTrillions || 0)
+        ).toFixed(2)
+      ),
+    };
+    setMetrics(nextMetrics);
+
+    if (reelectionCampaign.decision === 'running') {
+      const proj = computeCampaignProjection(
+        nextMetrics,
+        reelectionCampaign.campaignMomentum
+      );
+      setReelectionCampaign((curr) => ({
+        ...curr,
+        projectedVoteShare: proj.projectedVoteShare,
+        battlegroundEdge: proj.battlegroundEdge,
+      }));
+    }
+
+    if (power.blocImpacts) {
+      const bi = power.blocImpacts;
+      setBlocs((prev) => ({
+        workingClass: clamp(
+          Math.round(prev.workingClass + (bi.workingClass || 0)),
+          5,
+          95
+        ),
+        suburbanModerates: clamp(
+          Math.round(prev.suburbanModerates + (bi.suburbanModerates || 0)),
+          5,
+          95
+        ),
+        youngVoters: clamp(
+          Math.round(prev.youngVoters + (bi.youngVoters || 0)),
+          5,
+          95
+        ),
+        seniors: clamp(Math.round(prev.seniors + (bi.seniors || 0)), 5, 95),
+        techFinance: clamp(
+          Math.round(prev.techFinance + (bi.techFinance || 0)),
+          5,
+          95
+        ),
+      }));
+    }
+
+    if (
+      typeof power.forceReadinessDelta === 'number' &&
+      power.forceReadinessDelta !== 0
+    ) {
+      setMilitary((prev) => ({
+        ...prev,
+        forceReadiness: clamp(
+          Number(
+            (prev.forceReadiness + (power.forceReadinessDelta || 0)).toFixed(1)
+          ),
+          30,
+          100
+        ),
+      }));
+    }
+
+    if (
+      typeof power.cabinetLoyaltyDelta === 'number' &&
+      power.cabinetLoyaltyDelta !== 0
+    ) {
+      const delta = power.cabinetLoyaltyDelta;
+      setCabinet((prev) =>
+        prev.map((c) => {
+          const nextLoyalty = clamp(c.loyalty + delta, 15, 98);
+          return {
+            ...c,
+            loyalty: nextLoyalty,
+            status:
+              nextLoyalty >= 65
+                ? 'Aligned'
+                : nextLoyalty >= 45
+                ? 'Cautious'
+                : 'Strained',
+          };
+        })
+      );
+    }
+
+    const record: ExecutedPowerRecord = {
+      id: `exec-pow-${currentMonth}-${power.id}-${Date.now()}`,
+      powerId: power.id,
+      title: power.title,
+      category: power.category,
+      month: currentMonth,
+      summary: `Invoked ${power.instrumentType}: ${power.effectSummary}`,
+    };
+    setExecutedPowers((prev) => [record, ...prev]);
+
+    const milestoneCategory: MilestoneItem['category'] =
+      power.category === 'National Security' ||
+      power.category === 'Intelligence & Cyber Command'
+        ? 'Security'
+        : power.category === 'Economic & Fiscal' ||
+          power.category === 'Infrastructure & Housing' ||
+          power.category === 'Trade, Labor & Education'
+        ? 'Economic'
+        : 'Political';
+
+    const milestone: MilestoneItem = {
+      id: `ms-pow-${currentMonth}-${power.id}-${Date.now()}`,
+      month: currentMonth,
+      category: milestoneCategory,
+      title: `Executive Instrument: ${power.title}`,
+      description: power.description,
+    };
+    setMilestones((prev) => [milestone, ...prev]);
+
+    const newsCategory: NewsHeadlineItem['category'] =
+      power.category === 'National Security' ||
+      power.category === 'Intelligence & Cyber Command'
+        ? 'defense'
+        : power.category === 'Economic & Fiscal' ||
+          power.category === 'Trade, Labor & Education' ||
+          power.category === 'Science, Space & Energy'
+        ? 'economy'
+        : power.category === 'Legacy & Media' ||
+          power.category === 'Healthcare & Public Welfare' ||
+          power.category === 'Infrastructure & Housing'
+        ? 'domestic'
+        : 'politics';
+
+    setNewsFeed((prev) =>
+      mergeNewsStories(prev, [
+        {
+          id: `news-pow-${currentMonth}-${power.id}-${Date.now()}`,
+          month: currentMonth,
+          outlet: 'The Washington Chronicle',
+          category: newsCategory,
+          headline:
+            power.customHeadline ||
+            `White House Invokes ${power.instrumentType}: "${power.title}"`,
+          summary: power.effectSummary,
+          tone:
+            (power.metricImpacts.approval || 0) >= 1.0
+              ? 'positive'
+              : (power.metricImpacts.approval || 0) < 0
+              ? 'critical'
+              : 'neutral',
+        },
+      ])
+    );
   };
 
   const currentYearNumber = Math.max(1, Math.ceil(currentMonth / 12));
@@ -3962,15 +5232,15 @@ export default function App() {
         95
       ),
       nationalDebtTrillions: Math.max(
-        10,
+        0.01,
         Number(
           (metrics.nationalDebtTrillions + option.debtDeltaTrillions).toFixed(2)
         )
       ),
       inflation: clamp(
         Number((metrics.inflation + option.inflationDelta).toFixed(2)),
-        -1.0,
-        18.0
+        -12.0,
+        25.0
       ),
     };
 
@@ -4033,7 +5303,7 @@ export default function App() {
       fedFundsRate: clamp(
         Number((prev.fedFundsRate + option.rateDelta).toFixed(2)),
         0.25,
-        12
+        20
       ),
       fedStance: option.stanceRequested,
       fedChairNote: option.chairNote,
@@ -4043,13 +5313,13 @@ export default function App() {
       ...metrics,
       gdpGrowth: clamp(
         Number((metrics.gdpGrowth + option.gdpDelta).toFixed(2)),
-        -6.0,
-        8.5
+        -15.0,
+        22.0
       ),
       inflation: clamp(
         Number((metrics.inflation + option.inflationDelta).toFixed(2)),
-        -1.0,
-        18.0
+        -12.0,
+        25.0
       ),
       approval: clamp(
         Number((metrics.approval + option.approvalDelta).toFixed(1)),
@@ -4170,7 +5440,7 @@ export default function App() {
     const nextMetrics: NationalMetrics = {
       ...metrics,
       nationalDebtTrillions: Math.max(
-        10,
+        0.01,
         Number(
           (metrics.nationalDebtTrillions + projection.debtDeltaTrillions).toFixed(
             2
@@ -4179,13 +5449,13 @@ export default function App() {
       ),
       gdpGrowth: clamp(
         Number((metrics.gdpGrowth + projection.gdpDelta).toFixed(2)),
-        -6.0,
-        8.5
+        -15.0,
+        22.0
       ),
       inflation: clamp(
         Number((metrics.inflation + projection.inflationDelta).toFixed(2)),
-        -1.0,
-        18.0
+        -12.0,
+        25.0
       ),
       approval: clamp(
         Number((metrics.approval + projection.approvalDelta).toFixed(1)),
@@ -4293,6 +5563,100 @@ export default function App() {
         },
       ])
     );
+  };
+
+  const handleCompleteDebate = (result: {
+    totalScore: number;
+    momentumDelta: number;
+    approvalDelta: number;
+    blocDeltas: Partial<VoterBlocs>;
+    summaryHeadline: string;
+  }) => {
+    playDeskSound('stamp', muted);
+    setShowDebateModal(false);
+
+    const nextMetrics = {
+      ...metrics,
+      approval: clamp(
+        Number((metrics.approval + result.approvalDelta).toFixed(1)),
+        0,
+        95
+      ),
+    };
+    setMetrics(nextMetrics);
+
+    setBlocs((prev) => ({
+      workingClass: clamp(
+        Math.round(prev.workingClass + (result.blocDeltas.workingClass || 0)),
+        5,
+        95
+      ),
+      suburbanModerates: clamp(
+        Math.round(
+          prev.suburbanModerates + (result.blocDeltas.suburbanModerates || 0)
+        ),
+        5,
+        95
+      ),
+      techFinance: clamp(
+        Math.round(prev.techFinance + (result.blocDeltas.techFinance || 0)),
+        5,
+        95
+      ),
+      seniors: clamp(
+        Math.round(prev.seniors + (result.blocDeltas.seniors || 0)),
+        5,
+        95
+      ),
+      youngVoters: clamp(
+        Math.round(prev.youngVoters + (result.blocDeltas.youngVoters || 0)),
+        5,
+        95
+      ),
+    }));
+
+    if (reelectionCampaign.decision === 'running') {
+      const nextMomentum = clamp(
+        reelectionCampaign.campaignMomentum + result.momentumDelta,
+        -20,
+        20
+      );
+      const { projectedVoteShare, battlegroundEdge } =
+        computeCampaignProjection(nextMetrics, nextMomentum);
+      setReelectionCampaign((prev) => ({
+        ...prev,
+        campaignMomentum: nextMomentum,
+        projectedVoteShare,
+        battlegroundEdge,
+        eventsHeld: prev.eventsHeld + 1,
+      }));
+    }
+
+    const ts = Date.now();
+    setNewsFeed((prev) =>
+      mergeNewsStories(prev, [
+        {
+          id: `debate-news-m${currentMonth}-${ts}`,
+          month: currentMonth,
+          outlet: 'National Debate Broadcast',
+          category: 'politics',
+          headline: result.summaryHeadline,
+          summary: `Debate score: ${result.totalScore}/100. Voter bloc enthusiasm shifted in real-time across battleground states.`,
+          tone: result.totalScore >= 75 ? 'positive' : 'neutral',
+        },
+      ])
+    );
+
+    setMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-debate-m${currentMonth}-${ts}`,
+        month: currentMonth,
+        category: 'Political',
+        title: `Televised Presidential Debate: Score ${result.totalScore}/100`,
+        description: `Successfully squared off against ${reelectionCampaign.opponentName} in debate format, boosting campaign momentum and voter enthusiasm.`,
+      },
+    ]);
   };
 
   const handleDispatchRegionalOutreach = (
@@ -4413,9 +5777,44 @@ export default function App() {
     }
   };
 
-  const handleCompleteDiplomaticSummit = (outcome: DiplomaticSummitOutcome) => {
-    playDeskSound(outcome.walkedOut ? 'alert' : 'stamp', muted);
+  const handleToggleSecretServiceProtection = () => {
+    const nextEnabled = !secretServiceProtection;
+    setSecretServiceProtection(nextEnabled);
+    playDeskSound('select', muted);
 
+    if (nextEnabled && lastSecretServiceBudgetMonth !== currentMonth) {
+      setLastSecretServiceBudgetMonth(currentMonth);
+      setMetrics((prev) => ({
+        ...prev,
+        nationalDebtTrillions: Number(
+          (prev.nationalDebtTrillions + 0.01).toFixed(2)
+        ),
+      }));
+      setNewsFeed((prev) =>
+        mergeNewsStories(prev, [
+          {
+            id: `ss-prot-m${currentMonth}-${Date.now()}`,
+            month: currentMonth,
+            outlet: 'Federal Wire',
+            category: 'defense',
+            headline:
+              'White House Expands Secret Service Summit Protection Detail ($10B)',
+            summary:
+              'Supplemental protective funding authorizes advanced counter-assault and motorcade teams for foreign diplomatic summits, cutting assassination and kidnapping risk by 75%.',
+            tone: 'neutral',
+          },
+        ])
+      );
+    }
+  };
+
+  const handleCompleteDiplomaticSummit = (outcome: DiplomaticSummitOutcome) => {
+    playDeskSound(
+      outcome.walkedOut || outcome.securityEvent ? 'alert' : 'stamp',
+      muted
+    );
+
+    const budgetCost = outcome.budgetCostTrillions || 0;
     const nextMetrics: NationalMetrics = {
       ...metrics,
       diplomaticStanding: clamp(
@@ -4438,9 +5837,27 @@ export default function App() {
         -1.0,
         18.0
       ),
+      nationalDebtTrillions: Number(
+        Math.max(0.01, metrics.nationalDebtTrillions + budgetCost).toFixed(2)
+      ),
     };
 
     setMetrics(nextMetrics);
+    if (
+      typeof outcome.forceReadinessDelta === 'number' &&
+      outcome.forceReadinessDelta !== 0
+    ) {
+      setMilitary((prev) => ({
+        ...prev,
+        forceReadiness: clamp(
+          Number(
+            (prev.forceReadiness + outcome.forceReadinessDelta!).toFixed(1)
+          ),
+          10,
+          100
+        ),
+      }));
+    }
     setLastSummitMonth(currentMonth);
     setLatestSummitOutcome(outcome);
 
@@ -4477,7 +5894,8 @@ export default function App() {
 
     if (
       outcome.verdict === 'Historic Breakthrough Treaty' ||
-      outcome.walkedOut
+      outcome.walkedOut ||
+      outcome.securityEvent
     ) {
       setMilestones((prev) => [
         ...prev,
@@ -4497,17 +5915,589 @@ export default function App() {
           id: `${outcome.id}-news`,
           month: currentMonth,
           outlet: 'Global Diplomatic Wire',
-          category: 'foreign',
+          category: outcome.securityEvent ? 'defense' : 'foreign',
           headline: outcome.headline,
           summary: outcome.summary,
-          tone: outcome.walkedOut
-            ? 'critical'
-            : outcome.diplomaticDelta > 0
-            ? 'positive'
-            : 'neutral',
+          tone:
+            outcome.walkedOut || outcome.securityEvent
+              ? 'critical'
+              : outcome.diplomaticDelta > 0
+              ? 'positive'
+              : 'neutral',
         },
       ])
     );
+  };
+
+  const applyMilitaryPromotions = (
+    targets: { memberId: string; targetGradeIndex: number; note?: string }[]
+  ) => {
+    if (targets.length === 0) return;
+    playDeskSound('select', muted);
+
+    const newRecords: MilitaryPromotionRecord[] = [];
+    let readinessGain = 0;
+    let flagPromotions = 0;
+    let fourStarPromotions = 0;
+
+    setMilitaryRoster((prev) => {
+      const targetMap = new Map(targets.map((t) => [t.memberId, t]));
+      return prev.map((member) => {
+        const req = targetMap.get(member.id);
+        if (!req) return member;
+
+        const nextGrade = Math.max(
+          member.gradeIndex + 1,
+          Math.min(MAX_RANK_GRADE_INDEX, req.targetGradeIndex)
+        );
+        if (nextGrade <= member.gradeIndex) return member;
+
+        const fromRank = getServiceRankInfo(member.service, member.gradeIndex);
+        const toRank = getServiceRankInfo(member.service, nextGrade);
+        const isCommissioning = !fromRank.isOfficer && toRank.isOfficer;
+        const isFlag = toRank.stars > 0;
+        const promotionType: MilitaryPromotionRecord['promotionType'] = isFlag
+          ? 'Senate Flag Confirmation'
+          : isCommissioning || nextGrade - member.gradeIndex > 1
+          ? 'Battlefield Commission'
+          : 'Standard Advancement';
+
+        if (isFlag) flagPromotions++;
+        if (nextGrade === MAX_RANK_GRADE_INDEX) fourStarPromotions++;
+        readinessGain += isFlag ? 0.5 : 0.2;
+
+        newRecords.push({
+          id: `prom-${member.id}-m${currentMonth}-${Date.now()}-${Math.floor(
+            Math.random() * 1000
+          )}`,
+          memberId: member.id,
+          memberName: member.name,
+          service: member.service,
+          fromPayGrade: fromRank.payGrade,
+          fromRankTitle: fromRank.title,
+          toPayGrade: toRank.payGrade,
+          toRankTitle: toRank.title,
+          toAbbr: toRank.abbr,
+          stars: toRank.stars,
+          month: currentMonth,
+          promotionType,
+          note:
+            req.note ||
+            `${MILITARY_SERVICES[member.service].shortLabel} promotion signed for ${member.unit} (${member.specialty}).`,
+        });
+
+        return {
+          ...member,
+          gradeIndex: nextGrade,
+          commendations: member.commendations + 1,
+          meritScore: Math.min(99, member.meritScore + 1),
+          status:
+            nextGrade >= 15
+              ? 'Command Staff'
+              : member.status,
+          promotedMonth: currentMonth,
+        };
+      });
+    });
+
+    if (newRecords.length === 0) return;
+
+    setPromotionHistory((prev) => [...newRecords, ...prev]);
+
+    setMilitary((prev) => ({
+      ...prev,
+      forceReadiness: Math.min(
+        100,
+        Number((prev.forceReadiness + Math.min(2.5, readinessGain)).toFixed(1))
+      ),
+    }));
+
+    if (flagPromotions > 0) {
+      const lead = newRecords.find((r) => r.stars > 0) || newRecords[0];
+      setNewsFeed((prev) =>
+        mergeNewsStories(prev, [
+          {
+            id: `prom-news-m${currentMonth}-${Date.now()}`,
+            month: currentMonth,
+            outlet: 'Pentagon Wire',
+            category: 'defense',
+            headline:
+              fourStarPromotions > 0
+                ? `Senate Confirms New Four-Star Command Promotion: ${lead.toAbbr} ${lead.memberName}`
+                : `White House Advances ${flagPromotions} Flag & General Officer Promotion${
+                    flagPromotions > 1 ? 's' : ''
+                  }`,
+            summary: `Commander-in-Chief signed promotion orders elevating ${lead.memberName} (${MILITARY_SERVICES[lead.service].label}) to ${lead.toRankTitle} (${lead.toPayGrade}).`,
+            tone: 'positive',
+          },
+        ])
+      );
+    }
+
+    if (fourStarPromotions > 0) {
+      const fourStarRec =
+        newRecords.find((r) => r.stars === 4) || newRecords[0];
+      setMilestones((prev) => [
+        ...prev,
+        {
+          id: `ms-4star-${currentMonth}-${Date.now()}`,
+          month: currentMonth,
+          category: 'Security',
+          title: `Promoted 4-Star ${fourStarRec.toRankTitle}: ${fourStarRec.memberName}`,
+          description: `Confirmed ${fourStarRec.memberName} (${MILITARY_SERVICES[fourStarRec.service].label}) to ${fourStarRec.toPayGrade} four-star command.`,
+        },
+      ]);
+    }
+  };
+
+  const handlePromoteMilitaryMember = (
+    memberId: string,
+    targetGradeIndex: number,
+    note?: string
+  ) => {
+    applyMilitaryPromotions([{ memberId, targetGradeIndex, note }]);
+  };
+
+  const handleBatchPromoteMilitaryMembers = (memberIds: string[]) => {
+    const targets = memberIds
+      .map((id) => {
+        const m = militaryRoster.find((item) => item.id === id);
+        if (!m || m.gradeIndex >= MAX_RANK_GRADE_INDEX) return null;
+        return { memberId: m.id, targetGradeIndex: m.gradeIndex + 1 };
+      })
+      .filter(
+        (t): t is { memberId: string; targetGradeIndex: number } => t !== null
+      );
+    applyMilitaryPromotions(targets);
+  };
+
+  const handleRecruitMilitaryPersonnel = (
+    service: MilitaryServiceBranch,
+    startingGradeIndex: number
+  ) => {
+    playDeskSound('select', muted);
+    const created = recruitMilitaryPersonnel(
+      militaryRoster,
+      service,
+      startingGradeIndex
+    );
+    const rankInfo = getServiceRankInfo(service, created.gradeIndex);
+    setMilitaryRoster((prev) => [created, ...prev]);
+    setPromotionHistory((prev) => [
+      {
+        id: `enlist-${created.id}-m${currentMonth}`,
+        memberId: created.id,
+        memberName: created.name,
+        service,
+        fromPayGrade: 'Civilian',
+        fromRankTitle:
+          created.gradeIndex === 0 ? 'New Enlistee' : 'Officer Candidate',
+        toPayGrade: rankInfo.payGrade,
+        toRankTitle: rankInfo.title,
+        toAbbr: rankInfo.abbr,
+        stars: rankInfo.stars,
+        month: currentMonth,
+        promotionType:
+          created.gradeIndex >= 9
+            ? 'Battlefield Commission'
+            : 'Standard Advancement',
+        note: `Inducted into ${MILITARY_SERVICES[service].label} (${created.unit}).`,
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleAppointFourStarAsJcs = (member: MilitaryServiceMember) => {
+    playDeskSound('select', muted);
+    const rank = getServiceRankInfo(member.service, member.gradeIndex);
+    const branchLabel = MILITARY_SERVICES[member.service].label;
+    const chairTitle = `${rank.abbr} ${member.name}`;
+
+    setMilitary((prev) => ({
+      ...prev,
+      jointChiefsChair: {
+        name: chairTitle,
+        branch: branchLabel,
+        doctrine: `${member.specialty} & Joint Force Readiness`,
+      },
+      forceReadiness: Math.min(100, Number((prev.forceReadiness + 1).toFixed(1))),
+    }));
+
+    setNewsFeed((prev) =>
+      mergeNewsStories(prev, [
+        {
+          id: `jcs-promoted-m${currentMonth}-${Date.now()}`,
+          month: currentMonth,
+          outlet: 'Capitol Dispatch',
+          category: 'defense',
+          headline: `President Taps Promoted Four-Star ${chairTitle} as Joint Chiefs Chair`,
+          summary: `Elevated directly from ${member.unit}, ${chairTitle} (${branchLabel}) assumes top Pentagon advisory command.`,
+          tone: 'positive',
+        },
+      ])
+    );
+
+    setMilestones((prev) => [
+      ...prev,
+      {
+        id: `ms-jcs-prom-${currentMonth}-${Date.now()}`,
+        month: currentMonth,
+        category: 'Security',
+        title: `Elevated ${chairTitle} to Joint Chiefs Chair`,
+        description: `Promoted ${branchLabel} four-star commander from ${member.unit} to Chair of the Joint Chiefs of Staff.`,
+      },
+    ]);
+  };
+
+  const applyMilitaryMedals = (
+    awards: {
+      memberId: string;
+      medal: MilitaryMedalDefinition;
+      citation?: string;
+    }[]
+  ) => {
+    if (awards.length === 0) return;
+    playDeskSound('stamp', muted);
+
+    const awardMap = new Map(awards.map((a) => [a.memberId, a]));
+    const newRecords: MilitaryMedalAwardRecord[] = [];
+    let readinessGain = 0;
+    let approvalGain = 0;
+
+    const nextRoster = militaryRoster.map((member) => {
+      const req = awardMap.get(member.id);
+      if (!req) return member;
+      const eligibility = canAwardMedalToMember(member, req.medal);
+      if (!eligibility.eligible) return member;
+
+      const rank = getServiceRankInfo(member.service, member.gradeIndex);
+      const medalName = getMedalDisplayName(req.medal, member.service);
+      const citationText =
+        req.citation?.trim() ||
+        `Awarded for exemplary ${member.specialty} performance and distinguished service with ${member.unit} (Merit ${member.meritScore}).`;
+
+      const record: MilitaryMedalAwardRecord = {
+        id: `med-${member.id}-${req.medal.id}-m${currentMonth}-${Date.now()}-${Math.floor(
+          Math.random() * 1000
+        )}`,
+        memberId: member.id,
+        memberName: member.name,
+        memberRankAbbr: rank.abbr,
+        service: member.service,
+        medalId: req.medal.id,
+        medalName,
+        medalAbbr: req.medal.abbr,
+        tier: req.medal.tier,
+        month: currentMonth,
+        meritScoreAtAward: member.meritScore,
+        citation: citationText,
+        awardedBy: `President ${profile.name}`,
+      };
+
+      newRecords.push(record);
+      readinessGain += req.medal.readinessBonus;
+      approvalGain += req.medal.approvalBonus;
+
+      return {
+        ...member,
+        commendations: member.commendations + 1,
+        meritScore: Math.min(99, member.meritScore + req.medal.meritBoost),
+        serviceRecordMedals: [
+          record,
+          ...(member.serviceRecordMedals || []),
+        ],
+      };
+    });
+
+    if (newRecords.length === 0) return;
+
+    setMilitaryRoster(nextRoster);
+    setMedalHistory((prev) => [...newRecords, ...prev]);
+
+    setMilitary((prev) => ({
+      ...prev,
+      forceReadiness: clamp(
+        Number((prev.forceReadiness + Math.min(3.0, readinessGain)).toFixed(1)),
+        30,
+        100
+      ),
+    }));
+
+    setMetrics((prev) => ({
+      ...prev,
+      approval: clamp(
+        Number((prev.approval + Math.min(2.5, approvalGain)).toFixed(1)),
+        0,
+        95
+      ),
+    }));
+
+    const highHonors = newRecords.filter(
+      (r) => r.tier === 'valor' || r.tier === 'highest_honor'
+    );
+    if (highHonors.length > 0) {
+      const lead =
+        highHonors.find((r) => r.tier === 'highest_honor') || highHonors[0];
+      setNewsFeed((prev) =>
+        mergeNewsStories(prev, [
+          {
+            id: `medal-news-m${currentMonth}-${Date.now()}`,
+            month: currentMonth,
+            outlet: 'Pentagon Wire',
+            category: 'defense',
+            headline:
+              lead.tier === 'highest_honor'
+                ? `White House Ceremony: President Presents Medal of Honor to ${lead.memberRankAbbr} ${lead.memberName}`
+                : `President Awards ${lead.medalName} to ${highHonors.length} Decorated Service Member${
+                    highHonors.length > 1 ? 's' : ''
+                  }`,
+            summary: `${lead.memberRankAbbr} ${lead.memberName} (${MILITARY_SERVICES[lead.service].label}) received the ${lead.medalName}. ${lead.citation}`,
+            tone: 'positive',
+          },
+        ])
+      );
+
+      setMilestones((prev) => [
+        ...prev,
+        {
+          id: `ms-medal-${currentMonth}-${Date.now()}`,
+          month: currentMonth,
+          category: 'Security',
+          title: `Presidential Decoration: ${lead.medalName} (${lead.memberRankAbbr} ${lead.memberName})`,
+          description: `Presented the ${lead.medalName} to ${lead.memberRankAbbr} ${lead.memberName} (${MILITARY_SERVICES[lead.service].label}) with Merit Score ${lead.meritScoreAtAward}.`,
+        },
+      ]);
+    }
+  };
+
+  const handleAwardMilitaryMedal = (
+    memberId: string,
+    medal: MilitaryMedalDefinition,
+    citation?: string
+  ) => {
+    applyMilitaryMedals([{ memberId, medal, citation }]);
+  };
+
+  const handleBatchAwardTopPerformers = (memberIds: string[]) => {
+    const awards = memberIds
+      .map((id) => {
+        const member = militaryRoster.find((m) => m.id === id);
+        if (!member) return null;
+        const topMedal = getTopEligibleMedalForMember(member);
+        if (!topMedal) return null;
+        return {
+          memberId: member.id,
+          medal: topMedal,
+          citation: `Batch Merit Citation for sustained high performance (Merit ${member.meritScore}) with ${member.unit}.`,
+        };
+      })
+      .filter(
+        (
+          item
+        ): item is {
+          memberId: string;
+          medal: MilitaryMedalDefinition;
+          citation: string;
+        } => item !== null
+      );
+    applyMilitaryMedals(awards);
+  };
+
+  const handleAssignUnitToTheater = (
+    unitId: string,
+    theaterId: RegionalTheaterId,
+    posture: TheaterUnitPosture
+  ) => {
+    const unit = DEPLOYABLE_MILITARY_UNITS.find((u) => u.id === unitId);
+    const theater = REGIONAL_THEATERS.find((t) => t.id === theaterId);
+    if (!unit || !theater) return;
+
+    const currentInTheater = theaterAssignments.filter(
+      (a) => a.theaterId === theaterId
+    );
+    if (
+      currentInTheater.length >= theater.maxUnits &&
+      !currentInTheater.some((a) => a.unitId === unitId)
+    ) {
+      return;
+    }
+
+    playDeskSound('stamp', muted);
+    setTheaterAssignments((prev) => {
+      const filtered = prev.filter((a) => a.unitId !== unitId);
+      return [
+        ...filtered,
+        {
+          unitId,
+          theaterId,
+          posture,
+          assignedMonth: currentMonth,
+        },
+      ];
+    });
+
+    setNewsFeed((prev) =>
+      mergeNewsStories(prev, [
+        {
+          id: `theater-deploy-${unitId}-m${currentMonth}-${Date.now()}`,
+          month: currentMonth,
+          outlet: 'Pentagon Force Posture Wire',
+          category: 'defense',
+          headline: `Pentagon Orders ${unit.name} to ${theater.commandCode}`,
+          summary: `${unit.name} (${unit.unitType}) deployed to ${theater.name} under ${posture} posture, boosting regional diplomatic and security odds.`,
+          tone: 'neutral',
+        },
+      ])
+    );
+  };
+
+  const handleRecallUnitFromTheater = (unitId: string) => {
+    const unit = DEPLOYABLE_MILITARY_UNITS.find((u) => u.id === unitId);
+    const existing = theaterAssignments.find((a) => a.unitId === unitId);
+    if (!existing) return;
+    playDeskSound('select', muted);
+    setTheaterAssignments((prev) => prev.filter((a) => a.unitId !== unitId));
+    if (unit) {
+      const theater = REGIONAL_THEATERS.find(
+        (t) => t.id === existing.theaterId
+      );
+      setNewsFeed((prev) =>
+        mergeNewsStories(prev, [
+          {
+            id: `theater-recall-${unitId}-m${currentMonth}-${Date.now()}`,
+            month: currentMonth,
+            outlet: 'Pentagon Force Posture Wire',
+            category: 'defense',
+            headline: `${unit.name} Rotates Out of ${theater?.commandCode || 'Theater'} to Reserve`,
+            summary: `Commanders returned ${unit.name} to strategic U.S. reserve readiness.`,
+            tone: 'neutral',
+          },
+        ])
+      );
+    }
+  };
+
+  const handleUpdateTheaterUnitPosture = (
+    unitId: string,
+    posture: TheaterUnitPosture
+  ) => {
+    playDeskSound('select', muted);
+    setTheaterAssignments((prev) =>
+      prev.map((a) => (a.unitId === unitId ? { ...a, posture } : a))
+    );
+  };
+
+  const handleResolveTheaterSecurityEvent = (
+    event: TheaterSecurityEventDefinition,
+    probabilityUsedPct: number,
+    unitBonusPct: number,
+    assignedUnitNames: string[]
+  ) => {
+    const lastResolved = resolvedTheaterEventMonths[event.theaterId];
+    if (
+      typeof lastResolved === 'number' &&
+      currentMonth - lastResolved < 3
+    ) {
+      return;
+    }
+
+    const theater =
+      REGIONAL_THEATERS.find((t) => t.id === event.theaterId) ||
+      REGIONAL_THEATERS[0];
+    const diffOpsOffset = getGameDifficulty(
+      profile.gameDifficulty
+    ).opsOddsOffset;
+    const effectiveEventOdds = clamp(
+      Math.round(probabilityUsedPct + diffOpsOffset),
+      15,
+      96
+    );
+    const succeeded = Math.random() * 100 < effectiveEventOdds;
+    playDeskSound(succeeded ? 'stamp' : 'alert', muted);
+
+    const deltas = succeeded ? event.successRewards : event.failurePenalties;
+    const unitListLabel =
+      assignedUnitNames.length > 0
+        ? assignedUnitNames.join(', ')
+        : 'baseline homeland-staged forces';
+
+    const outcome: TheaterSecurityEventOutcome = {
+      id: `theater-evt-${event.id}-m${currentMonth}-${Date.now()}`,
+      eventId: event.id,
+      theaterId: event.theaterId,
+      theaterName: theater.name,
+      title: event.title,
+      month: currentMonth,
+      succeeded,
+      probabilityUsedPct: effectiveEventOdds,
+      unitBonusPct,
+      assignedUnitNames,
+      headline: succeeded
+        ? `${theater.commandCode} Neutralizes ${event.title}`
+        : `${theater.commandCode} Faces Setback During ${event.title}`,
+      summary: succeeded
+        ? `Operating with ${probabilityUsedPct}% success odds (+${unitBonusPct}% from regional units: ${unitListLabel}), U.S. commands stabilized ${theater.name} and reassured regional partners.`
+        : `Despite ${probabilityUsedPct}% projected odds (${unitListLabel}), adversaries exploited coverage gaps during ${event.title}, straining regional deterrence.`,
+      diplomaticDelta: deltas.diplomaticDelta,
+      approvalDelta: deltas.approvalDelta,
+      readinessDelta: deltas.readinessDelta,
+    };
+
+    setResolvedTheaterEventMonths((prev) => ({
+      ...prev,
+      [event.theaterId]: currentMonth,
+    }));
+    setLatestTheaterEventOutcome(outcome);
+
+    setMetrics((prev) => ({
+      ...prev,
+      diplomaticStanding: clamp(
+        Number((prev.diplomaticStanding + deltas.diplomaticDelta).toFixed(1)),
+        5,
+        100
+      ),
+      approval: clamp(
+        Number((prev.approval + deltas.approvalDelta).toFixed(1)),
+        0,
+        95
+      ),
+    }));
+
+    setMilitary((prev) => ({
+      ...prev,
+      forceReadiness: clamp(
+        Math.round(prev.forceReadiness + deltas.readinessDelta),
+        30,
+        100
+      ),
+    }));
+
+    setNewsFeed((prev) =>
+      mergeNewsStories(prev, [
+        {
+          id: `news-${outcome.id}`,
+          month: currentMonth,
+          outlet: 'Global Security Monitor',
+          category: 'defense',
+          headline: outcome.headline,
+          summary: outcome.summary,
+          tone: succeeded ? 'positive' : 'critical',
+        },
+      ])
+    );
+
+    if (succeeded) {
+      setMilestones((prev) => [
+        ...prev,
+        {
+          id: `ms-${outcome.id}`,
+          month: currentMonth,
+          category: 'Security',
+          title: `${theater.commandCode} Deterrence Success: ${event.title}`,
+          description: outcome.summary,
+        },
+      ]);
+    }
   };
 
   const handlePlayAgain = () => {
@@ -4551,6 +6541,25 @@ export default function App() {
     setLastIntelBriefMonth(null);
     setLastSummitMonth(null);
     setLatestSummitOutcome(null);
+    setMilitaryRoster(createInitialMilitaryRoster());
+    setPromotionHistory([]);
+    setMedalHistory([]);
+    setTheaterAssignments(createDefaultTheaterAssignments());
+    setResolvedTheaterEventMonths({});
+    setLatestTheaterEventOutcome(null);
+    setSupremeCourtBench(INITIAL_SUPREME_COURT_BENCH);
+    setResolvedCourtCaseIds([]);
+    setTradeStances({ ...DEFAULT_TRADE_STANCES });
+    setLastTradeActionMonth(null);
+    setShowSupremeCourtModal(false);
+    setShowTradePolicyModal(false);
+    setShowWhiteHouseToursModal(false);
+    setLastWhiteHouseTourMonth(null);
+    setWhiteHouseTourHistory([]);
+    setLatestNuclearResult(null);
+    setNuclearStrikeHistory([]);
+    setSecretServiceProtection(false);
+    setLastSecretServiceBudgetMonth(null);
     setActiveTab('briefing');
     setPhase('TITLE_SETUP');
   };
@@ -4601,6 +6610,7 @@ export default function App() {
                 institutions={institutions}
                 history={history}
                 legislativeRecords={legislativeRecords}
+                milestones={milestones}
                 diplomaticMissions={diplomaticMissions}
                 newsFeed={newsFeed}
                 briefing={currentBriefing}
@@ -4662,6 +6672,31 @@ export default function App() {
                   setShowBudgetModal(true);
                 }}
                 lastBudgetMonth={lastBudgetMonth}
+                onOpenExecutivePowersHub={() => {
+                  playDeskSound('select', muted);
+                  setShowExecutivePowersHub(true);
+                }}
+                onOpenDebateArena={() => {
+                  playDeskSound('select', muted);
+                  setShowDebateModal(true);
+                }}
+                onOpenSupremeCourt={() => {
+                  playDeskSound('select', muted);
+                  setShowSupremeCourtModal(true);
+                }}
+                onOpenTradePolicy={() => {
+                  playDeskSound('select', muted);
+                  setShowTradePolicyModal(true);
+                }}
+                onOpenWhiteHouseTours={() => {
+                  playDeskSound('select', muted);
+                  setShowWhiteHouseToursModal(true);
+                }}
+                lastTourMonth={lastWhiteHouseTourMonth}
+                secretServiceProtection={secretServiceProtection}
+                onToggleSecretServiceProtection={
+                  handleToggleSecretServiceProtection
+                }
                 onSubmitTurn={handleSubmitTurn}
               />
             )}
@@ -4675,6 +6710,7 @@ export default function App() {
                 newsFeed={newsFeed}
                 initialMetrics={initialMetrics}
                 metrics={metrics}
+                military={military}
                 history={history}
                 currentMonth={currentMonth}
                 startingYear={profile.startingYear}
@@ -4692,6 +6728,12 @@ export default function App() {
                   setLatestPressConferenceSummary(null)
                 }
                 onDispatchRegionalOutreach={handleDispatchRegionalOutreach}
+                adminSuite={adminSuite}
+                onChangePressAccess={(mode) => setAdminSuite(prev => ({ ...prev, pressAccessMode: mode }))}
+                onHostTownHall={(venue) => setAdminSuite(prev => ({ ...prev, lastTownHallMonth: currentMonth, actionLog: [{ month: currentMonth, title: `Town Hall: ${venue.label}`, desc: venue.headline }, ...prev.actionLog] }))}
+                onQueueRebuttalStatement={(text) => setAdminSuite(prev => ({ ...prev, actionLog: [{ month: currentMonth, title: 'Public Rebuttal', desc: text }, ...prev.actionLog] }))}
+                onRunCampaignAdWave={(strat) => setAdminSuite(prev => ({ ...prev, lastAdWaveMonth: currentMonth, actionLog: [{ month: currentMonth, title: 'Campaign Ad Wave', desc: strat }, ...prev.actionLog] }))}
+                onRunDebatePrep={(track) => setAdminSuite(prev => ({ ...prev, lastDebatePrepMonth: currentMonth, actionLog: [{ month: currentMonth, title: 'Debate Prep Track', desc: track }, ...prev.actionLog] }))}
               />
             )}
 
@@ -4703,6 +6745,7 @@ export default function App() {
                 cabinet={cabinet}
                 military={military}
                 metrics={metrics}
+                newsFeed={newsFeed}
                 isReplacingId={replacingCabinetId}
                 isFiringOfficial={isFiringOfficial}
                 isNominatingVp={isNominatingVp}
@@ -4722,6 +6765,20 @@ export default function App() {
                 onNominateVp={handleNominateVp}
                 onFireOfficial={handleFireOfficial}
                 onDraftFromCounsel={handleDraftFromCounsel}
+                adminSuite={adminSuite}
+                onChangeVpAssignment={(asgn) => setAdminSuite(prev => ({ ...prev, vpAssignment: asgn }))}
+                onRunLeakAudit={(style) => setAdminSuite(prev => ({ ...prev, lastLeakAuditMonth: currentMonth, actionLog: [{ month: currentMonth, title: 'Leak Audit Conducted', desc: style }, ...prev.actionLog] }))}
+                onCommendSecretary={(member) => setAdminSuite(prev => ({ ...prev, lastCommendMonth: currentMonth, actionLog: [{ month: currentMonth, title: `Commended ${member.name}`, desc: member.roleTitle }, ...prev.actionLog] }))}
+                onActingSwap={(member) => setAdminSuite(prev => ({ ...prev, lastActingSwapMonth: currentMonth, actionLog: [{ month: currentMonth, title: `Acting Status Swap for ${member.name}`, desc: member.roleTitle }, ...prev.actionLog] }))}
+                onQueueTaskForce={(policy, speech) => setAdminSuite(prev => ({ ...prev, actionLog: [{ month: currentMonth, title: 'Cabinet Task Force', desc: policy }, ...prev.actionLog] }))}
+                onOpenNominateJcsModal={() => {
+                  playDeskSound('select', muted);
+                  setShowNominateJcsModal(true);
+                }}
+                onOpenPardonsModal={() => {
+                  playDeskSound('select', muted);
+                  setShowPardonsModal(true);
+                }}
               />
             )}
 
@@ -4796,6 +6853,38 @@ export default function App() {
                 latestSummitOutcome={latestSummitOutcome}
                 onDismissSummitOutcome={() => setLatestSummitOutcome(null)}
                 onCompleteDiplomaticSummit={handleCompleteDiplomaticSummit}
+                militaryRoster={militaryRoster}
+                promotionHistory={promotionHistory}
+                medalHistory={medalHistory}
+                onPromoteMilitaryMember={handlePromoteMilitaryMember}
+                onBatchPromoteMilitaryMembers={handleBatchPromoteMilitaryMembers}
+                onRecruitMilitaryPersonnel={handleRecruitMilitaryPersonnel}
+                onAppointFourStarAsJcs={handleAppointFourStarAsJcs}
+                onAwardMilitaryMedal={handleAwardMilitaryMedal}
+                onBatchAwardTopPerformers={handleBatchAwardTopPerformers}
+                lastJcsConfirmation={lastJcsConfirmation}
+                onDismissJcsConfirmation={() => setLastJcsConfirmation(null)}
+                onOpenNominateJcsModal={() => {
+                  playDeskSound('select', muted);
+                  setShowNominateJcsModal(true);
+                }}
+                theaterAssignments={theaterAssignments}
+                resolvedTheaterEventMonths={resolvedTheaterEventMonths}
+                latestTheaterEventOutcome={latestTheaterEventOutcome}
+                onDismissTheaterEventOutcome={() =>
+                  setLatestTheaterEventOutcome(null)
+                }
+                onAssignUnitToTheater={handleAssignUnitToTheater}
+                onRecallUnitFromTheater={handleRecallUnitFromTheater}
+                onUpdateTheaterUnitPosture={handleUpdateTheaterUnitPosture}
+                onResolveTheaterSecurityEvent={
+                  handleResolveTheaterSecurityEvent
+                }
+                latestNuclearResult={latestNuclearResult}
+                nuclearStrikeHistory={nuclearStrikeHistory}
+                onDismissNuclearResult={() => setLatestNuclearResult(null)}
+                onExecuteNuclearStrike={handleExecuteNuclearStrike}
+                secretServiceProtection={secretServiceProtection}
               />
             )}
 
@@ -4963,6 +7052,30 @@ export default function App() {
             />
           )}
 
+        {phase === 'PLAYING' && showExecutivePowersHub && (
+          <ExecutivePowersHub
+            isOpen={showExecutivePowersHub}
+            onClose={() => setShowExecutivePowersHub(false)}
+            currentMonth={currentMonth}
+            metrics={metrics}
+            executedPowers={executedPowers}
+            onExecutePower={handleExecuteExecutivePower}
+          />
+        )}
+
+        {phase === 'PLAYING' && showNominateJcsModal && (
+          <NominateJcsModal
+            isOpen={showNominateJcsModal}
+            onClose={() => {
+              if (!isNominatingJcs) setShowNominateJcsModal(false);
+            }}
+            profile={profile}
+            military={military}
+            isSubmitting={isNominatingJcs}
+            onNominate={handleNominateJcs}
+          />
+        )}
+
         {phase === 'CAREER_END' &&
           (activeTab === 'library' ? (
             <PresidentialLibraryView
@@ -5000,6 +7113,56 @@ export default function App() {
               onPlayAgain={handlePlayAgain}
             />
           ))}
+        {showDebateModal && (
+          <PresidentialDebateModal
+            matchup={DEBATE_MATCHUPS[0]}
+            currentBlocs={blocs}
+            onCompleteDebate={handleCompleteDebate}
+            onClose={() => setShowDebateModal(false)}
+          />
+        )}
+        {showPardonsModal && (
+          <PresidentialPardonsModal
+            currentMonth={currentMonth}
+            metrics={metrics}
+            onResolvePetition={handleResolveClemency}
+            onClose={() => setShowPardonsModal(false)}
+          />
+        )}
+        {showSupremeCourtModal && (
+          <SupremeCourtModal
+            currentMonth={currentMonth}
+            party={resolvePartyId(profile.party, profile.coalition)}
+            metrics={metrics}
+            institutions={institutions}
+            bench={supremeCourtBench}
+            resolvedCaseIds={resolvedCourtCaseIds}
+            onResolveCase={handleResolveCourtCase}
+            onConfirmNominee={handleConfirmCourtNominee}
+            onClose={() => setShowSupremeCourtModal(false)}
+          />
+        )}
+        {showTradePolicyModal && (
+          <TradePolicyModal
+            currentMonth={currentMonth}
+            metrics={metrics}
+            currentStances={tradeStances}
+            lastTradeActionMonth={lastTradeActionMonth}
+            onEnactTradePackage={handleEnactTradePackage}
+            onClose={() => setShowTradePolicyModal(false)}
+          />
+        )}
+        {showWhiteHouseToursModal && (
+          <WhiteHouseToursModal
+            currentMonth={currentMonth}
+            metrics={metrics}
+            military={military}
+            lastTourMonth={lastWhiteHouseTourMonth}
+            tourHistory={whiteHouseTourHistory}
+            onScheduleTour={handleScheduleWhiteHouseTour}
+            onClose={() => setShowWhiteHouseToursModal(false)}
+          />
+        )}
       </div>
 
       <OfflineIndicator />

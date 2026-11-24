@@ -22,6 +22,7 @@ import {
   Send,
   Clock,
   TrendingUp,
+  Radiation,
 } from 'lucide-react';
 import {
   CabinetMember,
@@ -32,12 +33,23 @@ import {
   DiplomaticSummitPower,
   FedConsultOption,
   InstitutionalState,
+  JcsConfirmationResult,
   JudicialNominationOption,
   MilitaryCommandState,
+  MilitaryMedalAwardRecord,
+  MilitaryMedalDefinition,
+  MilitaryPromotionRecord,
+  MilitaryServiceBranch,
+  MilitaryServiceMember,
   NationalMetrics,
   OfficialDismissalResult,
+  RegionalTheaterId,
   SituationRoomResult,
   SituationScenarioType,
+  TheaterSecurityEventDefinition,
+  TheaterSecurityEventOutcome,
+  TheaterUnitAssignment,
+  TheaterUnitPosture,
 } from '../types/game';
 import { JOINT_CHIEFS_CANDIDATES } from '../data/appointees';
 import {
@@ -45,7 +57,19 @@ import {
   JUDICIAL_NOMINATION_OPTIONS,
 } from '../data/institutionalActions';
 import { SUMMIT_FOREIGN_POWERS } from '../data/diplomaticSummit';
+import {
+  computeTheaterInfluence,
+  resolveCountryToTheater,
+} from '../data/regionalTheaters';
 import { DiplomaticSummitModal } from './DiplomaticSummitModal';
+import { MilitaryPromotionPanel } from './MilitaryPromotionPanel';
+import { TheaterDeploymentMap } from './TheaterDeploymentMap';
+import { NuclearCommandPanel } from './NuclearCommandPanel';
+import {
+  NuclearStrikeProfileId,
+  NuclearStrikeRecord,
+  NuclearTargetCategory,
+} from '../data/nuclearCommand';
 
 interface SituationRoomViewProps {
   currentMonth: number;
@@ -97,6 +121,59 @@ interface SituationRoomViewProps {
   latestSummitOutcome: DiplomaticSummitOutcome | null;
   onDismissSummitOutcome: () => void;
   onCompleteDiplomaticSummit: (outcome: DiplomaticSummitOutcome) => void;
+  militaryRoster: MilitaryServiceMember[];
+  promotionHistory: MilitaryPromotionRecord[];
+  medalHistory: MilitaryMedalAwardRecord[];
+  onPromoteMilitaryMember: (
+    memberId: string,
+    targetGradeIndex: number,
+    note?: string
+  ) => void;
+  onBatchPromoteMilitaryMembers: (memberIds: string[]) => void;
+  onRecruitMilitaryPersonnel: (
+    service: MilitaryServiceBranch,
+    startingGradeIndex: number
+  ) => void;
+  onAppointFourStarAsJcs: (member: MilitaryServiceMember) => void;
+  onAwardMilitaryMedal: (
+    memberId: string,
+    medal: MilitaryMedalDefinition,
+    citation?: string
+  ) => void;
+  onBatchAwardTopPerformers: (memberIds: string[]) => void;
+  lastJcsConfirmation: JcsConfirmationResult | null;
+  onDismissJcsConfirmation: () => void;
+  onOpenNominateJcsModal: () => void;
+  theaterAssignments: TheaterUnitAssignment[];
+  resolvedTheaterEventMonths: Partial<Record<RegionalTheaterId, number>>;
+  latestTheaterEventOutcome: TheaterSecurityEventOutcome | null;
+  onDismissTheaterEventOutcome: () => void;
+  onAssignUnitToTheater: (
+    unitId: string,
+    theaterId: RegionalTheaterId,
+    posture: TheaterUnitPosture
+  ) => void;
+  onRecallUnitFromTheater: (unitId: string) => void;
+  onUpdateTheaterUnitPosture: (
+    unitId: string,
+    posture: TheaterUnitPosture
+  ) => void;
+  onResolveTheaterSecurityEvent: (
+    event: TheaterSecurityEventDefinition,
+    probabilityUsedPct: number,
+    unitBonusPct: number,
+    assignedUnitNames: string[]
+  ) => void;
+  latestNuclearResult: NuclearStrikeRecord | null;
+  nuclearStrikeHistory: NuclearStrikeRecord[];
+  onDismissNuclearResult: () => void;
+  onExecuteNuclearStrike: (params: {
+    targetCategory: NuclearTargetCategory;
+    targetName: string;
+    profileId: NuclearStrikeProfileId;
+    requireCongressApproval: boolean;
+  }) => void;
+  secretServiceProtection?: boolean;
 }
 
 const DEFCON_LABELS: Record<number, string> = {
@@ -297,6 +374,31 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
   latestSummitOutcome,
   onDismissSummitOutcome,
   onCompleteDiplomaticSummit,
+  militaryRoster,
+  promotionHistory,
+  medalHistory,
+  onPromoteMilitaryMember,
+  onBatchPromoteMilitaryMembers,
+  onRecruitMilitaryPersonnel,
+  onAppointFourStarAsJcs,
+  onAwardMilitaryMedal,
+  onBatchAwardTopPerformers,
+  lastJcsConfirmation,
+  onDismissJcsConfirmation,
+  onOpenNominateJcsModal,
+  theaterAssignments,
+  resolvedTheaterEventMonths,
+  latestTheaterEventOutcome,
+  onDismissTheaterEventOutcome,
+  onAssignUnitToTheater,
+  onRecallUnitFromTheater,
+  onUpdateTheaterUnitPosture,
+  onResolveTheaterSecurityEvent,
+  latestNuclearResult,
+  nuclearStrikeHistory,
+  onDismissNuclearResult,
+  onExecuteNuclearStrike,
+  secretServiceProtection = false,
 }) => {
   const [scenarioType, setScenarioType] = useState<SituationScenarioType>(
     'Start War / Request AUMF'
@@ -406,18 +508,37 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
     (m) => m.targetCountry.toLowerCase() === normalizedEnvoyCountry.toLowerCase()
   );
 
+  const scenarioTheater = resolveCountryToTheater(
+    targetCountry.trim() || 'Iran'
+  );
+  const scenarioTheaterInfluence = computeTheaterInfluence(
+    scenarioTheater.id,
+    theaterAssignments,
+    militaryRoster,
+    military
+  );
+
+  const envoyTheater = resolveCountryToTheater(normalizedEnvoyCountry);
+  const envoyTheaterInfluence = computeTheaterInfluence(
+    envoyTheater.id,
+    theaterAssignments,
+    militaryRoster,
+    military
+  );
+
   const computedProbability = Math.round(
     Math.max(
       25,
       Math.min(
-        92,
+        95,
         56 +
           (metrics.diplomaticStanding - 50) * 0.25 +
           ((stateSec?.competence || 65) - 60) * 0.2 +
           (selectedEnvoy.specialty === missionFocus
             ? selectedEnvoy.bonusOdds
             : 0) +
-          (missionDuration - 3) * 3
+          (missionDuration - 3) * 3 +
+          envoyTheaterInfluence.diplomacyOddsBonusPct
       )
     )
   );
@@ -464,11 +585,33 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
             </span>
             <button
               type="button"
+              onClick={() => {
+                document
+                  .getElementById('strategic-nuclear-command')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-100 whitespace-nowrap shrink-0"
+            >
+              <Radiation className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Nuclear Command</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setShowReassignJcs((v) => !v)}
               className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50"
             >
               {showReassignJcs ? 'Close Command Picker' : 'Switch Joint Chiefs Chair'}
             </button>
+            {isJcsInterim && (
+              <button
+                type="button"
+                onClick={onOpenNominateJcsModal}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#132238] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1E3557]"
+              >
+                <Shield className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Nominate Permanent Chief</span>
+              </button>
+            )}
             <button
               type="button"
               disabled={isJcsInterim || isFiringOfficial}
@@ -480,6 +623,72 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
             </button>
           </div>
         </div>
+
+        {isJcsInterim && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3">
+            <div className="space-y-0.5">
+              <p className="text-xs font-semibold text-amber-950">
+                Joint Chiefs Chair Vacancy · Interim Acting Leadership
+              </p>
+              <p className="text-xs text-amber-900">
+                {military.jointChiefsChair.name} is temporarily overseeing the Joint Staff. Submit a formal nominee to the Senate Armed Services Committee to confirm a permanent four-star Chair.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenNominateJcsModal}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#132238] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1E3557] whitespace-nowrap shrink-0"
+            >
+              <Shield className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Nominate Replacement to Senate</span>
+            </button>
+          </div>
+        )}
+
+        {lastJcsConfirmation && (
+          <div
+            className={`mt-4 rounded-lg border p-4 space-y-2 ${
+              lastJcsConfirmation.approved
+                ? 'border-emerald-200 bg-emerald-50/80'
+                : 'border-red-200 bg-red-50/80'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p
+                  className={`text-xs font-semibold ${
+                    lastJcsConfirmation.approved
+                      ? 'text-emerald-800'
+                      : 'text-red-800'
+                  }`}
+                >
+                  Senate Armed Services Vote · {lastJcsConfirmation.voteMarginLabel} ·{' '}
+                  {lastJcsConfirmation.branch}
+                </p>
+                <h3 className="mt-0.5 font-display text-lg font-bold text-stone-900">
+                  {lastJcsConfirmation.confirmationHeadline}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={onDismissJcsConfirmation}
+                aria-label="Dismiss Joint Chiefs confirmation result"
+                className="rounded p-1 text-stone-500 hover:bg-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs leading-relaxed text-stone-700">
+              {lastJcsConfirmation.committeeSummary}
+            </p>
+            {lastJcsConfirmation.approved && (
+              <p className="text-xs font-medium text-stone-800">
+                Incoming Doctrine ({lastJcsConfirmation.doctrine}): &ldquo;
+                {lastJcsConfirmation.currentCounsel}&rdquo;
+              </p>
+            )}
+          </div>
+        )}
 
         {latestDismissalResult &&
           latestDismissalResult.targetCategory === 'military' && (
@@ -806,6 +1015,14 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
               <p className="mt-1.5 text-sm leading-relaxed text-stone-700">
                 {latestResult.mediaSummary}
               </p>
+              {latestResult.theaterDeploymentContext && (
+                <p className="mt-2 font-mono-num text-xs font-semibold text-[#132238]">
+                  Theater Posture ({latestResult.theaterDeploymentContext.commandCode}):{' '}
+                  {latestResult.theaterDeploymentContext.assignedUnitCount > 0
+                    ? `${latestResult.theaterDeploymentContext.assignedUnitNames.join(', ')} · ${latestResult.theaterDeploymentContext.operationSuccessProbabilityPct}% Security Odds (+${latestResult.theaterDeploymentContext.securityOddsBonusPct}% units)`
+                    : `No forward-deployed units (${latestResult.theaterDeploymentContext.operationSuccessProbabilityPct}% baseline odds)`}
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -1109,6 +1326,23 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
               placeholder="Or type any country or region (e.g., Syria, Cuba, South China Sea)..."
               className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs text-stone-900 focus:border-[#132238] focus:outline-none"
             />
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-[11px]">
+              <span className="text-stone-700">
+                <strong className="text-[#132238]">
+                  {scenarioTheater.commandCode}:
+                </strong>{' '}
+                {scenarioTheaterInfluence.assignedUnits.length > 0
+                  ? `${scenarioTheaterInfluence.assignedUnits
+                      .map((d) => d.unit.shortCode)
+                      .join(', ')} deployed`
+                  : 'No regional units assigned on map'}
+              </span>
+              <span className="font-mono-num font-bold text-[#132238]">
+                {scenarioTheaterInfluence.operationSuccessProbabilityPct}% Op
+                Readiness (+{scenarioTheaterInfluence.securityOddsBonusPct}%
+                units)
+              </span>
+            </div>
           </div>
 
           {/* Custom Scenario Directive Form */}
@@ -1258,6 +1492,48 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
           )}
         </section>
       </div>
+
+      {/* Strategic Nuclear Command (States / Other Countries & Congressional Approval Toggle) */}
+      <NuclearCommandPanel
+        currentMonth={currentMonth}
+        metrics={metrics}
+        military={military}
+        latestNuclearResult={latestNuclearResult}
+        nuclearStrikeHistory={nuclearStrikeHistory}
+        onDismissNuclearResult={onDismissNuclearResult}
+        onExecuteNuclearStrike={onExecuteNuclearStrike}
+      />
+
+      {/* Global Regional Theater Deployment Map & Flashpoint Events */}
+      <TheaterDeploymentMap
+        currentMonth={currentMonth}
+        military={military}
+        militaryRoster={militaryRoster}
+        diplomaticMissions={diplomaticMissions}
+        theaterAssignments={theaterAssignments}
+        resolvedTheaterEventMonths={resolvedTheaterEventMonths}
+        latestTheaterEventOutcome={latestTheaterEventOutcome}
+        onDismissTheaterEventOutcome={onDismissTheaterEventOutcome}
+        onAssignUnitToTheater={onAssignUnitToTheater}
+        onRecallUnitFromTheater={onRecallUnitFromTheater}
+        onUpdateTheaterUnitPosture={onUpdateTheaterUnitPosture}
+        onResolveTheaterSecurityEvent={onResolveTheaterSecurityEvent}
+      />
+
+      {/* Military Promotion & Officer Commissioning Board */}
+      <MilitaryPromotionPanel
+        currentMonth={currentMonth}
+        roster={militaryRoster}
+        promotionHistory={promotionHistory}
+        medalHistory={medalHistory}
+        currentJcsChairName={military.jointChiefsChair.name}
+        onPromoteMember={onPromoteMilitaryMember}
+        onBatchPromoteMembers={onBatchPromoteMilitaryMembers}
+        onRecruitPersonnel={onRecruitMilitaryPersonnel}
+        onAppointFourStarAsJcs={onAppointFourStarAsJcs}
+        onAwardMedal={onAwardMilitaryMedal}
+        onBatchAwardTopPerformers={onBatchAwardTopPerformers}
+      />
 
       {/* Independent Institutions: Federal Reserve & Federal Judiciary */}
       <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -1536,6 +1812,19 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
                 placeholder="Or enter any country (e.g., France, Poland, Canada)..."
                 className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs text-stone-900 focus:border-[#132238] focus:outline-none"
               />
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[11px]">
+                <span className="text-stone-600">
+                  Theater:{' '}
+                  <strong className="text-stone-900">
+                    {envoyTheater.commandCode}
+                  </strong>{' '}
+                  ({envoyTheaterInfluence.unitCount} unit
+                  {envoyTheaterInfluence.unitCount === 1 ? '' : 's'} assigned)
+                </span>
+                <span className="font-mono-num font-bold text-emerald-700">
+                  +{envoyTheaterInfluence.diplomacyOddsBonusPct}% Unit Backing
+                </span>
+              </div>
             </div>
 
             {/* 2. Select Envoy */}
@@ -1853,7 +2142,18 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
             </p>
           </div>
 
-          <div className="font-mono-num text-xs">
+          <div className="flex flex-wrap items-center gap-2 font-mono-num text-xs">
+            <span
+              className={`rounded-md border px-3 py-1.5 font-semibold ${
+                secretServiceProtection
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : 'border-amber-200 bg-amber-50 text-amber-900'
+              }`}
+            >
+              {secretServiceProtection
+                ? 'Secret Service: ON (-75% Threat)'
+                : 'Secret Service: OFF'}
+            </span>
             <span className="rounded-md border border-stone-200 bg-stone-50 px-3 py-1.5 font-semibold text-stone-800">
               {lastSummitMonth !== null && currentMonth - lastSummitMonth < 2
                 ? `Next Summit Unlocks M${lastSummitMonth + 2}`
@@ -1912,6 +2212,13 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
           {SUMMIT_FOREIGN_POWERS.map((power) => {
             const onCooldown =
               lastSummitMonth !== null && currentMonth - lastSummitMonth < 2;
+            const powerTheater = resolveCountryToTheater(power.country);
+            const powerInfluence = computeTheaterInfluence(
+              powerTheater.id,
+              theaterAssignments,
+              militaryRoster,
+              military
+            );
             return (
               <article
                 key={power.id}
@@ -1943,6 +2250,11 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
                   <p className="text-xs leading-relaxed text-stone-700">
                     {power.coreIssue}
                   </p>
+                  {powerInfluence.diplomacyOddsBonusPct > 0 && (
+                    <p className="font-mono-num text-[11px] font-semibold text-emerald-700">
+                      {powerTheater.commandCode}: +{powerInfluence.diplomacyOddsBonusPct}% Unit Backing
+                    </p>
+                  )}
                 </div>
 
                 <div className="border-t border-stone-200 pt-3 flex items-center justify-between gap-2">
@@ -1965,19 +2277,33 @@ export const SituationRoomView: React.FC<SituationRoomViewProps> = ({
         </div>
       </section>
 
-      {activeSummitPower && (
-        <DiplomaticSummitModal
-          power={activeSummitPower}
-          currentMonth={currentMonth}
-          metrics={metrics}
-          stateSecCompetence={stateSec?.competence ?? 65}
-          onComplete={(outcome) => {
-            setActiveSummitPower(null);
-            onCompleteDiplomaticSummit(outcome);
-          }}
-          onClose={() => setActiveSummitPower(null)}
-        />
-      )}
+      {activeSummitPower && (() => {
+        const summitTheater = resolveCountryToTheater(activeSummitPower.country);
+        const summitInfluence = computeTheaterInfluence(
+          summitTheater.id,
+          theaterAssignments,
+          militaryRoster,
+          military
+        );
+        return (
+          <DiplomaticSummitModal
+            power={activeSummitPower}
+            currentMonth={currentMonth}
+            metrics={metrics}
+            stateSecCompetence={stateSec?.competence ?? 65}
+            theaterDiplomacyBonusPct={summitInfluence.diplomacyOddsBonusPct}
+            theaterLabel={summitTheater.commandCode}
+            secretServiceProtection={secretServiceProtection}
+            intelThreatLevel={military.intelThreatLevel}
+            defconLevel={military.defconLevel}
+            onComplete={(outcome) => {
+              setActiveSummitPower(null);
+              onCompleteDiplomaticSummit(outcome);
+            }}
+            onClose={() => setActiveSummitPower(null)}
+          />
+        );
+      })()}
 
       {showFireJcsModal && (
         <div

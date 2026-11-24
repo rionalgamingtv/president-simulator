@@ -11,6 +11,7 @@ import {
   Minus,
   Plus,
   Search,
+  Upload,
 } from 'lucide-react';
 import {
   AppointeeBonuses,
@@ -18,17 +19,22 @@ import {
   CabinetDepartment,
   CabinetMember,
   CoalitionId,
+  GameDifficultyId,
   PartyId,
+  PoliticalClimateModeId,
   PresidentProfile,
   SavedCareerState,
+  ScenarioClimateCategory,
   ScenarioDefinition,
   VicePresidentProfile,
 } from '../types/game';
 import {
   BACKGROUNDS,
   COALITIONS,
+  GAME_DIFFICULTIES,
   getPartyMeta,
   PARTIES,
+  POLITICAL_CLIMATE_MODES,
   SCENARIOS,
 } from '../data/scenarios';
 import {
@@ -43,6 +49,7 @@ import {
   HistoricalPresidentOption,
   QUICK_MILESTONE_YEARS,
 } from '../data/historicalPresidents';
+import { HISTORICAL_SCENARIOS } from '../data/historicalScenarios';
 import { PWAInstallControl } from './PWAInstallControl';
 
 export interface SelectedAdministration {
@@ -68,6 +75,7 @@ interface TitleSetupProps {
   ) => void;
   onResumeSaved: () => void;
   onDiscardSaved: () => void;
+  onImportCareerJson?: (imported: SavedCareerState) => void;
 }
 
 type RosterSlotId = 'vp' | 'jcs' | CabinetDepartment;
@@ -121,6 +129,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
   onStartScenario,
   onResumeSaved,
   onDiscardSaved,
+  onImportCareerJson,
 }) => {
   const defaultHistPres =
     HISTORICAL_PRESIDENTS.find((p) => p.id === 'obama') ||
@@ -142,6 +151,12 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
     defaultHistPres.background
   );
   const [termLength, setTermLength] = useState<12 | 48>(48);
+  const [gameDifficulty, setGameDifficulty] =
+    useState<GameDifficultyId>('medium');
+  const [difficultyMode, setDifficultyMode] =
+    useState<PoliticalClimateModeId>('standard');
+  const [motto, setMotto] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
   const [ticketSyncedNotice, setTicketSyncedNotice] = useState<string | null>(
     null
   );
@@ -169,7 +184,14 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>(
     SCENARIOS[0].id
   );
-  const [useCustomScenario, setUseCustomScenario] = useState(false);
+  const [selectedHistoricalScenarioId, setSelectedHistoricalScenarioId] =
+    useState<string>(HISTORICAL_SCENARIOS[0].id);
+  const [climateFilter, setClimateFilter] = useState<
+    'all' | ScenarioClimateCategory
+  >('all');
+  const [scenarioMode, setScenarioMode] = useState<
+    'preset' | 'historical' | 'custom'
+  >('preset');
   const [customStartYear, setCustomStartYear] = useState<number>(2008);
   const [customPremise, setCustomPremise] = useState<string>(
     () => getEraOverviewForYear(2008).defaultPremise
@@ -373,15 +395,44 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
     };
   };
 
+  const activeHistoricalScenario =
+    HISTORICAL_SCENARIOS.find((s) => s.id === selectedHistoricalScenarioId) ||
+    HISTORICAL_SCENARIOS[0];
+
+  const handleSyncHistoricalScenarioTicket = (sc: ScenarioDefinition) => {
+    if (!sc.recommendedPresidentId) return;
+    const pres = HISTORICAL_PRESIDENTS.find(
+      (p) => p.id === sc.recommendedPresidentId
+    );
+    if (!pres) return;
+    setCandidateMode('historical');
+    handleSelectHistoricalPresident(pres);
+    handleApplyHistoricalTicket(pres);
+  };
+
   const handleLaunch = (e: React.FormEvent) => {
     e.preventDefault();
+    const isHistMode = scenarioMode === 'historical';
+    const isCustomMode = scenarioMode === 'custom';
+    const chosenHist = isHistMode ? activeHistoricalScenario : undefined;
+
     const profile: PresidentProfile = {
       name: name.trim() || 'Jordan Mercer',
       party,
       coalition,
       background,
       termLength,
-      ...(useCustomScenario ? { startingYear: customStartYear } : {}),
+      difficultyMode,
+      gameDifficulty,
+      ...(motto.trim() ? { motto: motto.trim() } : {}),
+      ...(isCustomMode ? { startingYear: customStartYear } : {}),
+      ...(chosenHist
+        ? {
+            startingYear: chosenHist.historicalYear,
+            historicalScenarioId: chosenHist.id,
+            historicalBenchmarkNote: chosenHist.historicalBenchmarkNote,
+          }
+        : {}),
       ...(selectedHistoricalPresident
         ? {
             historicalPresidentId: selectedHistoricalPresident.id,
@@ -391,7 +442,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
     };
     const administration = buildAdministration();
 
-    if (useCustomScenario) {
+    if (isCustomMode) {
       const customPlaceholder: ScenarioDefinition = {
         ...SCENARIOS[0],
         id: `custom_${customStartYear}`,
@@ -404,6 +455,8 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
         administration,
         customPremise.trim()
       );
+    } else if (chosenHist) {
+      onStartScenario(profile, chosenHist, administration);
     } else {
       const chosen =
         SCENARIOS.find((s) => s.id === selectedScenarioId) || SCENARIOS[0];
@@ -480,8 +533,46 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                 <span>Configure New Term</span>
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </a>
+              {onImportCareerJson && (
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 whitespace-nowrap shrink-0">
+                  <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Import .json Save</span>
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        try {
+                          const parsed = JSON.parse(
+                            String(reader.result || '')
+                          ) as SavedCareerState;
+                          if (!parsed?.profile || !parsed?.metrics) {
+                            setImportError(
+                              'Invalid administration archive file.'
+                            );
+                            return;
+                          }
+                          setImportError(null);
+                          onImportCareerJson(parsed);
+                        } catch {
+                          setImportError('Could not parse JSON save file.');
+                        }
+                      };
+                      reader.readAsText(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              )}
               <PWAInstallControl variant="banner" />
             </div>
+            {importError && (
+              <p className="text-xs font-medium text-red-700">{importError}</p>
+            )}
           </div>
         </div>
 
@@ -814,6 +905,119 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                 >
                   First-Year Sprint (12 Months)
                 </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label
+                htmlFor="administration-motto"
+                className="block text-sm font-semibold text-stone-800"
+              >
+                Administration Motto / Doctrine Slogan (Optional)
+              </label>
+              <input
+                id="administration-motto"
+                type="text"
+                maxLength={72}
+                value={motto}
+                onChange={(e) => setMotto(e.target.value)}
+                placeholder="e.g., Rebuild Main Street, Restore Credibility"
+                className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3.5 py-2.5 text-sm text-stone-900 focus:border-[#132238] focus:outline-none"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="block text-sm font-semibold text-stone-800">
+                  Difficulty Setting
+                </span>
+                <span className="text-xs text-stone-500">
+                  Controls starting approval headwinds, metric volatility, scandal rate, and operational odds
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
+                {GAME_DIFFICULTIES.map((diff) => {
+                  const active = gameDifficulty === diff.id;
+                  const accentClass =
+                    diff.id === 'easy'
+                      ? active
+                        ? 'border-emerald-700 bg-emerald-50/70 ring-1 ring-emerald-700'
+                        : 'border-stone-200 bg-white hover:border-stone-300'
+                      : diff.id === 'hard'
+                      ? active
+                        ? 'border-red-700 bg-red-50/70 ring-1 ring-red-700'
+                        : 'border-stone-200 bg-white hover:border-stone-300'
+                      : active
+                      ? 'border-[#132238] bg-[#132238]/[0.04] ring-1 ring-[#132238]'
+                      : 'border-stone-200 bg-white hover:border-stone-300';
+                  return (
+                    <button
+                      key={diff.id}
+                      type="button"
+                      onClick={() => setGameDifficulty(diff.id)}
+                      className={`rounded-lg border p-3.5 text-left transition-colors flex flex-col justify-between ${accentClass}`}
+                    >
+                      <div>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-bold text-stone-900">
+                            {diff.label}
+                          </span>
+                          <span className="text-[11px] font-medium text-stone-500">
+                            {diff.subtitle}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-stone-600">
+                          {diff.description}
+                        </p>
+                      </div>
+                      <p className="mt-2.5 border-t border-stone-100 pt-2 font-mono-num text-[11px] font-semibold text-[#132238]">
+                        {diff.shortTrait}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="block text-sm font-semibold text-stone-800">
+                  Political Climate &amp; Governance Posture
+                </span>
+                <span className="text-xs text-stone-500">
+                  Shapes Day-1 Capitol leverage, voter bloc mood, and press dynamics
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {POLITICAL_CLIMATE_MODES.map((mode) => {
+                  const active = difficultyMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setDifficultyMode(mode.id)}
+                      className={`rounded-lg border p-3 text-left transition-colors flex flex-col justify-between ${
+                        active
+                          ? 'border-[#132238] bg-[#132238]/[0.04] ring-1 ring-[#132238]'
+                          : 'border-stone-200 bg-white hover:border-stone-300'
+                      }`}
+                    >
+                      <div>
+                        <p className="text-xs font-bold text-stone-900">
+                          {mode.label}
+                        </p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-stone-600">
+                          {mode.description}
+                        </p>
+                      </div>
+                      <p className="mt-2 border-t border-stone-100 pt-1.5 font-mono-num text-[11px] font-semibold text-[#132238]">
+                        {mode.shortTrait}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1253,23 +1457,34 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                 Select your inaugural crisis
               </h2>
             </div>
-            <div className="flex items-center gap-1 rounded-lg bg-stone-100 p-1">
+            <div className="flex flex-wrap items-center gap-1 rounded-lg bg-stone-100 p-1">
               <button
                 type="button"
-                onClick={() => setUseCustomScenario(false)}
+                onClick={() => setScenarioMode('preset')}
                 className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
-                  !useCustomScenario
+                  scenarioMode === 'preset'
                     ? 'bg-white text-[#132238] shadow-sm'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                Preset Scenarios
+                Preset Climates ({SCENARIOS.length})
               </button>
               <button
                 type="button"
-                onClick={() => setUseCustomScenario(true)}
+                onClick={() => setScenarioMode('historical')}
                 className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
-                  useCustomScenario
+                  scenarioMode === 'historical'
+                    ? 'bg-white text-[#132238] shadow-sm'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                Historical Scenarios ({HISTORICAL_SCENARIOS.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setScenarioMode('custom')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
+                  scenarioMode === 'custom'
                     ? 'bg-white text-[#132238] shadow-sm'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
@@ -1279,83 +1494,301 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
             </div>
           </div>
 
-          {!useCustomScenario ? (
-            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-              {SCENARIOS.map((sc) => {
-                const selected = selectedScenarioId === sc.id;
-                const imgFailed = failedScenarioImgs[sc.id];
-                return (
-                  <button
-                    key={sc.id}
-                    type="button"
-                    onClick={() => setSelectedScenarioId(sc.id)}
-                    className={`flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${
-                      selected
-                        ? 'border-[#132238] ring-1 ring-[#132238] bg-[#132238]/[0.02]'
-                        : 'border-stone-200 bg-white hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="aspect-[4/3] w-full overflow-hidden bg-stone-200">
-                      {imgFailed ? (
-                        <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-[#132238] to-stone-700 p-4 text-center text-white">
-                          <Landmark className="h-8 w-8 text-[#C99A3B]" />
-                          <span className="mt-2 text-xs font-medium">
-                            {sc.title}
-                          </span>
-                        </div>
-                      ) : (
-                        <img
-                          src={sc.imageUrl}
-                          alt={sc.title}
-                          referrerPolicy="no-referrer"
-                          onError={() =>
-                            setFailedScenarioImgs((prev) => ({
-                              ...prev,
-                              [sc.id]: true,
-                            }))
+          {scenarioMode === 'preset' ? (
+            <div className="mt-6 space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1 rounded-lg bg-stone-100 p-1">
+                  {(
+                    [
+                      { id: 'all', label: `All Climates (${SCENARIOS.length})` },
+                      { id: 'tech_economy', label: 'AI, Tech & Economy' },
+                      { id: 'geopolitics_crisis', label: 'Geopolitics & Crisis' },
+                      { id: 'governance_fiscal', label: 'Governance & Fiscal' },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setClimateFilter(tab.id);
+                        if (tab.id !== 'all') {
+                          const current = SCENARIOS.find(
+                            (s) => s.id === selectedScenarioId
+                          );
+                          if (current?.climateCategory !== tab.id) {
+                            const firstInCategory = SCENARIOS.find(
+                              (s) => s.climateCategory === tab.id
+                            );
+                            if (firstInCategory) {
+                              setSelectedScenarioId(firstInCategory.id);
+                            }
                           }
-                          className="h-full w-full object-cover"
-                        />
+                        }
+                      }}
+                      className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
+                        climateFilter === tab.id
+                          ? 'bg-white text-[#132238] shadow-sm'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs text-stone-500">
+                  Select a national backdrop including The AI Age, Cold War, and Fiscal Reckoning
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                {SCENARIOS.filter(
+                  (sc) =>
+                    climateFilter === 'all' ||
+                    sc.climateCategory === climateFilter
+                ).map((sc) => {
+                  const selected = selectedScenarioId === sc.id;
+                  const imgFailed = failedScenarioImgs[sc.id];
+                  return (
+                    <button
+                      key={sc.id}
+                      type="button"
+                      onClick={() => setSelectedScenarioId(sc.id)}
+                      className={`flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${
+                        selected
+                          ? 'border-[#132238] ring-1 ring-[#132238] bg-[#132238]/[0.02]'
+                          : 'border-stone-200 bg-white hover:border-stone-300'
+                      }`}
+                    >
+                      <div className="aspect-[4/3] w-full overflow-hidden bg-stone-200">
+                        {imgFailed ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-[#132238] to-stone-700 p-4 text-center text-white">
+                            <Landmark className="h-8 w-8 text-[#C99A3B]" />
+                            <span className="mt-2 text-xs font-medium">
+                              {sc.title}
+                            </span>
+                          </div>
+                        ) : (
+                          <img
+                            src={sc.imageUrl}
+                            alt={sc.title}
+                            referrerPolicy="no-referrer"
+                            onError={() =>
+                              setFailedScenarioImgs((prev) => ({
+                                ...prev,
+                                [sc.id]: true,
+                              }))
+                            }
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex flex-1 flex-col justify-between p-4">
+                        <div>
+                          <p className="text-[11px] font-medium text-stone-500">
+                            {sc.eraLabel}
+                          </p>
+                          <h3 className="mt-1 font-display text-lg font-semibold text-stone-900">
+                            {sc.title}
+                          </h3>
+                          <p className="mt-1.5 text-xs leading-relaxed text-stone-600">
+                            {sc.description}
+                          </p>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-stone-100 pt-3 text-xs">
+                          <div>
+                            <span className="block text-[11px] text-stone-500">
+                              Approval
+                            </span>
+                            <span className="font-mono-num font-semibold text-stone-900">
+                              {sc.initialMetrics.approval}%
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[11px] text-stone-500">
+                              Inflation
+                            </span>
+                            <span className="font-mono-num font-semibold text-stone-900">
+                              {sc.initialMetrics.inflation}%
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[11px] text-stone-500">
+                              GDP
+                            </span>
+                            <span className="font-mono-num font-semibold text-stone-900">
+                              {sc.initialMetrics.gdpGrowth}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : scenarioMode === 'historical' ? (
+            <div className="mt-6 space-y-5">
+              {/* Historical Mode Context & 1-Click Ticket Sync */}
+              {(() => {
+                const recPres = HISTORICAL_PRESIDENTS.find(
+                  (p) => p.id === activeHistoricalScenario.recommendedPresidentId
+                );
+                const isAlreadySynced =
+                  recPres &&
+                  name.trim().toLowerCase() === recPres.name.toLowerCase();
+                return (
+                  <div className="rounded-xl border border-stone-200 bg-stone-50 p-4 flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-1 max-w-2xl">
+                      <p className="text-xs font-semibold text-[#132238]">
+                        Historical Scenarios Mode · Era-Accurate Congress, Macro &amp; News Benchmarks
+                      </p>
+                      <p className="text-xs leading-relaxed text-stone-600">
+                        Command landmark American crises from the 1933 Great Depression to the 1962 Cuban Missile Crisis and 1979 Oil Shock with real-world unemployment, inflation, congressional seat splits, and historically grounded headlines.
+                      </p>
+                      {activeHistoricalScenario.historicalBenchmarkNote && (
+                        <p className="text-[11px] leading-relaxed text-stone-500 pt-0.5">
+                          <span className="font-semibold text-stone-700">
+                            Selected Era Benchmark:
+                          </span>{' '}
+                          {activeHistoricalScenario.historicalBenchmarkNote}
+                        </p>
                       )}
                     </div>
-
-                    <div className="flex flex-1 flex-col justify-between p-5">
-                      <div>
-                        <p className="text-xs font-medium text-stone-500">
-                          {sc.eraLabel}
-                        </p>
-                        <h3 className="mt-1 font-display text-xl font-semibold text-stone-900">
-                          {sc.title}
-                        </h3>
-                        <p className="mt-2 text-sm leading-relaxed text-stone-600">
-                          {sc.description}
-                        </p>
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-3 gap-2 border-t border-stone-100 pt-3 text-xs">
-                        <div>
-                          <span className="block text-stone-500">Approval</span>
-                          <span className="font-mono-num font-semibold text-stone-900">
-                            {sc.initialMetrics.approval}%
-                          </span>
-                        </div>
-                        <div>
-                          <span className="block text-stone-500">Inflation</span>
-                          <span className="font-mono-num font-semibold text-stone-900">
-                            {sc.initialMetrics.inflation}%
-                          </span>
-                        </div>
-                        <div>
-                          <span className="block text-stone-500">GDP</span>
-                          <span className="font-mono-num font-semibold text-stone-900">
-                            {sc.initialMetrics.gdpGrowth}%
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
+                    {recPres && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSyncHistoricalScenarioTicket(
+                            activeHistoricalScenario
+                          )
+                        }
+                        className="inline-flex items-center gap-2 rounded-lg border border-[#132238] bg-[#132238] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E3557] whitespace-nowrap shrink-0"
+                      >
+                        <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>
+                          {isAlreadySynced
+                            ? `Synced: ${recPres.name} (${activeHistoricalScenario.historicalYear} Ticket)`
+                            : `Load ${activeHistoricalScenario.historicalYear} Ticket: ${recPres.name}`}
+                        </span>
+                      </button>
+                    )}
+                  </div>
                 );
-              })}
+              })()}
+
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {HISTORICAL_SCENARIOS.map((sc) => {
+                  const selected = selectedHistoricalScenarioId === sc.id;
+                  const imgFailed = failedScenarioImgs[sc.id];
+                  const recPres = HISTORICAL_PRESIDENTS.find(
+                    (p) => p.id === sc.recommendedPresidentId
+                  );
+                  return (
+                    <button
+                      key={sc.id}
+                      type="button"
+                      onClick={() => setSelectedHistoricalScenarioId(sc.id)}
+                      className={`flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${
+                        selected
+                          ? 'border-[#132238] ring-1 ring-[#132238] bg-[#132238]/[0.02]'
+                          : 'border-stone-200 bg-white hover:border-stone-300'
+                      }`}
+                    >
+                      <div className="aspect-[4/3] w-full overflow-hidden bg-stone-200">
+                        {imgFailed ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-[#132238] to-stone-700 p-4 text-center text-white">
+                            <Landmark className="h-8 w-8 text-[#C99A3B]" />
+                            <span className="mt-2 text-xs font-medium">
+                              {sc.title}
+                            </span>
+                          </div>
+                        ) : (
+                          <img
+                            src={sc.imageUrl}
+                            alt={sc.title}
+                            referrerPolicy="no-referrer"
+                            onError={() =>
+                              setFailedScenarioImgs((prev) => ({
+                                ...prev,
+                                [sc.id]: true,
+                              }))
+                            }
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex flex-1 flex-col justify-between p-4">
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-mono-num text-[11px] font-semibold text-[#8B1E24]">
+                              {sc.historicalEraTag || sc.eraLabel}
+                            </p>
+                            {recPres && (
+                              <span className="text-[11px] font-medium text-stone-500 truncate">
+                                {recPres.name}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="mt-1 font-display text-lg font-semibold text-stone-900">
+                            {sc.title}
+                          </h3>
+                          <p className="mt-1.5 text-xs leading-relaxed text-stone-600">
+                            {sc.description}
+                          </p>
+                          {sc.historicalKeyEvents &&
+                            sc.historicalKeyEvents.length > 0 && (
+                              <ul className="mt-2.5 space-y-1 border-t border-stone-100 pt-2 text-[11px] text-stone-600">
+                                {sc.historicalKeyEvents.map((evt) => (
+                                  <li key={evt} className="truncate">
+                                    · {evt}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-4 gap-2 border-t border-stone-100 pt-3 text-xs">
+                          <div>
+                            <span className="block text-[10px] text-stone-500">
+                              Approval
+                            </span>
+                            <span className="font-mono-num font-semibold text-stone-900">
+                              {sc.initialMetrics.approval}%
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[10px] text-stone-500">
+                              Jobless
+                            </span>
+                            <span className="font-mono-num font-semibold text-stone-900">
+                              {sc.initialMetrics.unemployment}%
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[10px] text-stone-500">
+                              CPI
+                            </span>
+                            <span className="font-mono-num font-semibold text-stone-900">
+                              {sc.initialMetrics.inflation}%
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-[10px] text-stone-500">
+                              Congress
+                            </span>
+                            <span className="font-mono-num font-semibold text-stone-900">
+                              {sc.initialMetrics.houseSeats}H
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <div className="mt-6 space-y-6">
@@ -1543,7 +1976,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                 <textarea
                   id="custom-premise"
                   rows={4}
-                  required={useCustomScenario}
+                  required={scenarioMode === 'custom'}
                   value={customPremise}
                   onChange={(e) => {
                     setCustomPremise(e.target.value);
@@ -1572,16 +2005,25 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
                 President {name.trim() || 'Jordan Mercer'} (
                 {getPartyMeta(party, coalition).shortCode} ·{' '}
                 {getPartyMeta(party, coalition).label})
-              </span>
-              {useCustomScenario ? (
-                <>
-                  {' '}
-                  in{' '}
-                  <span className="font-mono-num font-semibold text-[#132238]">
-                    Jan {customStartYear}
-                  </span>
-                </>
-              ) : null}{' '}
+              </span>{' '}
+              in{' '}
+              <span className="font-semibold text-[#132238]">
+                {scenarioMode === 'custom'
+                  ? `Jan ${customStartYear} Custom Climate`
+                  : scenarioMode === 'historical'
+                  ? `${activeHistoricalScenario.title}`
+                  : SCENARIOS.find((s) => s.id === selectedScenarioId)?.title ??
+                    'Preset Climate'}
+              </span>{' '}
+              <span className="text-stone-500">
+                (
+                {GAME_DIFFICULTIES.find((d) => d.id === gameDifficulty)?.label ??
+                  'Medium'}{' '}
+                ·{' '}
+                {POLITICAL_CLIMATE_MODES.find((m) => m.id === difficultyMode)
+                  ?.label ?? 'Balanced Cycle'}
+                )
+              </span>{' '}
               with selected VP, Cabinet &amp; Military bonuses active on Day 1.
             </p>
             <button
@@ -1591,7 +2033,7 @@ export const TitleSetup: React.FC<TitleSetupProps> = ({
             >
               <span>
                 {isLoadingCustom
-                  ? `Drafting ${useCustomScenario ? customStartYear : ''} Briefing...`
+                  ? `Drafting ${scenarioMode === 'custom' ? customStartYear : ''} Briefing...`
                   : 'Take the Oath & Start Term'}
               </span>
               <ArrowRight className="h-4 w-4" aria-hidden="true" />

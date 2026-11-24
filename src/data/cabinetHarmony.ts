@@ -7,6 +7,7 @@ import {
   CabinetHarmonyTone,
   CabinetMember,
   CabinetScandalEvent,
+  NewsHeadlineItem,
 } from '../types/game';
 
 interface DepartmentHarmonyTemplate {
@@ -526,3 +527,199 @@ export function evaluateHarmonyMeeting(params: {
     revealedScandal,
   };
 }
+
+export interface CabinetMemberApprovalSummary {
+  publicApproval: number;
+  newsImpact: number;
+  matchedStories: number;
+  sentimentLabel: 'Popular' | 'Respected' | 'Polarizing' | 'Embattled';
+  driverLabel: string;
+}
+
+const DEPARTMENT_NEWS_KEYWORDS: Record<CabinetDepartment, string[]> = {
+  chief_of_staff: [
+    'west wing',
+    'chief of staff',
+    'white house',
+    'congress',
+    'whip',
+    'agenda',
+    'gridlock',
+    'shutdown',
+    'leak',
+  ],
+  state: [
+    'state dept',
+    'foggy bottom',
+    'diploma',
+    'summit',
+    'treaty',
+    'ally',
+    'allies',
+    'foreign',
+    'envoy',
+    'embassy',
+  ],
+  defense: [
+    'pentagon',
+    'defense',
+    'military',
+    'defcon',
+    'readiness',
+    'strike',
+    'troops',
+    'navy',
+    'theater',
+  ],
+  treasury: [
+    'treasury',
+    'inflation',
+    'cpi',
+    'tariff',
+    'trade',
+    'deficit',
+    'debt',
+    'bond',
+    'gdp',
+    'tax',
+    'budget',
+  ],
+  nsa: [
+    'intel',
+    'cia',
+    'nsc',
+    'cyber',
+    'security',
+    'surveillance',
+    'espionage',
+    'threat',
+  ],
+  justice: [
+    'doj',
+    'justice',
+    'supreme court',
+    'scotus',
+    'pardon',
+    'clemency',
+    'subpoena',
+    'prosecut',
+    'ethics',
+  ],
+  labor: [
+    'labor',
+    'union',
+    'wage',
+    'jobs',
+    'unemployment',
+    'workforce',
+    'strike',
+    'manufacturing',
+  ],
+  press_secretary: [
+    'press',
+    'briefing',
+    'podium',
+    'media',
+    'correspondents',
+    'statement',
+    'speech',
+  ],
+};
+
+const DEPARTMENT_NEWS_CATEGORIES: Record<
+  CabinetDepartment,
+  NewsHeadlineItem['category'][]
+> = {
+  chief_of_staff: ['politics', 'domestic'],
+  state: ['foreign'],
+  defense: ['defense'],
+  treasury: ['economy'],
+  nsa: ['defense', 'foreign'],
+  justice: ['politics', 'domestic'],
+  labor: ['economy', 'domestic'],
+  press_secretary: ['politics'],
+};
+
+export function computeCabinetMemberApproval(
+  member: CabinetMember,
+  newsFeed: NewsHeadlineItem[] = [],
+  nationalApproval = 50
+): CabinetMemberApprovalSummary {
+  const isActing = member.name.toLowerCase().startsWith('acting ');
+  const nameTokens = member.name
+    .toLowerCase()
+    .replace(/[^a-z\s-]/g, '')
+    .split(/\s+/)
+    .filter((t) => t.length >= 3 && t !== 'acting' && t !== 'secretary');
+  const lastName = nameTokens.length > 0 ? nameTokens[nameTokens.length - 1] : '';
+  const keywords = DEPARTMENT_NEWS_KEYWORDS[member.id] || [];
+  const categories = DEPARTMENT_NEWS_CATEGORIES[member.id] || [];
+
+  const recentNews = newsFeed.slice(-18);
+  let rawNewsImpact = 0;
+  let matchedStories = 0;
+
+  for (const item of recentNews) {
+    const text = `${item.headline || ''} ${item.summary || ''}`.toLowerCase();
+    const mentionsOfficial =
+      !isActing &&
+      ((lastName.length >= 4 && text.includes(lastName)) ||
+        text.includes(member.name.toLowerCase()));
+    const matchesPortfolio =
+      categories.includes(item.category) ||
+      keywords.some((kw) => text.includes(kw));
+
+    if (!mentionsOfficial && !matchesPortfolio) continue;
+    matchedStories += 1;
+
+    if (mentionsOfficial) {
+      if (item.tone === 'positive') rawNewsImpact += 5.0;
+      else if (item.tone === 'critical') rawNewsImpact -= 6.0;
+      else rawNewsImpact += 0.4;
+    } else {
+      if (item.tone === 'positive') rawNewsImpact += 1.9;
+      else if (item.tone === 'critical') rawNewsImpact -= 2.4;
+    }
+  }
+
+  const boundedNewsImpact = clamp(Math.round(rawNewsImpact), -18, 16);
+  const baseScore =
+    11 +
+    member.competence * 0.54 +
+    member.loyalty * 0.22 +
+    (nationalApproval - 50) * 0.16 +
+    (isActing ? -6 : 0);
+
+  const publicApproval = clamp(
+    Math.round(baseScore + boundedNewsImpact),
+    12,
+    94
+  );
+
+  const sentimentLabel: CabinetMemberApprovalSummary['sentimentLabel'] =
+    publicApproval >= 70
+      ? 'Popular'
+      : publicApproval >= 52
+      ? 'Respected'
+      : publicApproval >= 38
+      ? 'Polarizing'
+      : 'Embattled';
+
+  const driverLabel =
+    matchedStories === 0
+      ? 'Steady press'
+      : boundedNewsImpact > 0
+      ? `Press +${boundedNewsImpact}% (${matchedStories})`
+      : boundedNewsImpact < 0
+      ? `Press ${boundedNewsImpact}% (${matchedStories})`
+      : `Mixed press (${matchedStories})`;
+
+  return {
+    publicApproval,
+    newsImpact: boundedNewsImpact,
+    matchedStories,
+    sentimentLabel,
+    driverLabel,
+  };
+}
+

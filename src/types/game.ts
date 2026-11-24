@@ -27,6 +27,8 @@ export type BackgroundId =
   | 'executive'
   | 'commander';
 
+export type GameDifficultyId = 'easy' | 'medium' | 'hard';
+
 export interface PresidentProfile {
   name: string;
   party?: PartyId;
@@ -36,6 +38,65 @@ export interface PresidentProfile {
   startingYear?: number;
   historicalPresidentId?: string;
   governingDoctrine?: string;
+  motto?: string;
+  difficultyMode?: string;
+  gameDifficulty?: GameDifficultyId;
+  historicalScenarioId?: string;
+  historicalBenchmarkNote?: string;
+}
+
+export type PoliticalClimateModeId =
+  | 'standard'
+  | 'mandate'
+  | 'hardball'
+  | 'honeymoon'
+  | 'populist_wave'
+  | 'tech_disruption';
+
+export type ScenarioClimateCategory =
+  | 'tech_economy'
+  | 'geopolitics_crisis'
+  | 'governance_fiscal';
+
+export type GovernanceFocus = string;
+export type PressAccessMode = string;
+export type VpAssignmentId = string;
+export type CyberDefenseMode = string;
+export type TriadPosture = string;
+export type IntelFocusRegion = string;
+export type DefenseProcurementFocus = string;
+
+export interface AdminSuiteState {
+  governanceFocus: GovernanceFocus;
+  pressAccessMode: PressAccessMode;
+  vpAssignment: VpAssignmentId;
+  cyberDefenseMode: CyberDefenseMode;
+  triadPosture: TriadPosture;
+  intelFocusRegion: IntelFocusRegion;
+  defenseProcurementFocus: DefenseProcurementFocus;
+  activeSanctions: string[];
+  actionLog: {
+    id?: string;
+    month: number;
+    title: string;
+    desc: string;
+    category?: string;
+    summary?: string;
+    impactSummary?: string;
+  }[];
+  lastCommendMonth?: number;
+  lastLeakAuditMonth?: number;
+  lastActingSwapMonth?: number;
+  lastPardonMonth?: number;
+  lastProclamationMonth?: number;
+  lastCampDavidMonth?: number;
+  lastTownHallMonth?: number;
+  lastAdWaveMonth?: number;
+  lastDebatePrepMonth?: number;
+  lastSanctionMonth?: number;
+  lastAidMonth?: number;
+  lastReserveMonth?: number;
+  lastExerciseMonth?: number;
 }
 
 export interface NationalMetrics {
@@ -253,6 +314,101 @@ export interface MilitaryCommandState {
   operations: MilitaryOperation[];
 }
 
+export type MilitaryServiceBranch =
+  | 'army'
+  | 'marines'
+  | 'navy'
+  | 'coast_guard';
+
+export type MilitaryRankTier =
+  | 'recruit'
+  | 'enlisted'
+  | 'nco'
+  | 'junior_officer'
+  | 'field_officer'
+  | 'flag_officer';
+
+export interface MilitaryRankInfo {
+  gradeIndex: number; // 0 (E-1) to 18 (O-10)
+  payGrade: string; // e.g., E-1 .. E-9, O-1 .. O-10
+  title: string; // e.g., Private (Recruit), Gunnery Sergeant, Rear Admiral
+  abbr: string; // e.g., PVT, GySgt, RDML, GEN
+  tier: MilitaryRankTier;
+  tierLabel: string;
+  stars: number; // 0 for E-1..O-6, 1..4 for O-7..O-10
+  isOfficer: boolean;
+}
+
+export type MilitaryMedalTier =
+  | 'achievement'
+  | 'commendation'
+  | 'meritorious'
+  | 'distinguished'
+  | 'valor'
+  | 'highest_honor';
+
+export interface MilitaryMedalDefinition {
+  id: string;
+  name: string;
+  abbr: string;
+  tier: MilitaryMedalTier;
+  tierLabel: string;
+  minMeritScore: number;
+  serviceSpecificNames?: Partial<Record<MilitaryServiceBranch, string>>;
+  eligibilityNote: string;
+  description: string;
+  readinessBonus: number;
+  approvalBonus: number;
+  meritBoost: number;
+}
+
+export interface MilitaryMedalAwardRecord {
+  id: string;
+  memberId: string;
+  memberName: string;
+  memberRankAbbr: string;
+  service: MilitaryServiceBranch;
+  medalId: string;
+  medalName: string;
+  medalAbbr: string;
+  tier: MilitaryMedalTier;
+  month: number;
+  meritScoreAtAward: number;
+  citation: string;
+  awardedBy: string;
+}
+
+export interface MilitaryServiceMember {
+  id: string;
+  name: string;
+  service: MilitaryServiceBranch;
+  gradeIndex: number; // 0..18
+  specialty: string;
+  unit: string;
+  yearsOfService: number;
+  commendations: number;
+  meritScore: number; // 65-99
+  status: 'Active Duty' | 'Forward Deployed' | 'Command Staff';
+  promotedMonth?: number;
+  serviceRecordMedals?: MilitaryMedalAwardRecord[];
+}
+
+export interface MilitaryPromotionRecord {
+  id: string;
+  memberId: string;
+  memberName: string;
+  service: MilitaryServiceBranch;
+  fromPayGrade: string;
+  fromRankTitle: string;
+  toPayGrade: string;
+  toRankTitle: string;
+  toAbbr: string;
+  stars: number;
+  month: number;
+  promotionType: 'Standard Advancement' | 'Battlefield Commission' | 'Senate Flag Confirmation';
+  note: string;
+}
+
 export interface InstitutionalState {
   fedFundsRate: number;
   fedStance: 'Hawkish' | 'Neutral' | 'Accommodative';
@@ -277,6 +433,7 @@ export interface DiplomaticMission {
   status: 'In Progress' | 'Succeeded' | 'Setback';
   startedMonth: number;
   resolvedMonth?: number;
+  theaterBonusAtDispatch?: number;
   latestUpdate: string;
 }
 
@@ -542,6 +699,102 @@ export interface SituationRoomResult {
     nationalDebtTrillions: number;
   };
   voterBlocDeltas: VoterBlocs;
+  theaterDeploymentContext?: TheaterDeploymentContext;
+}
+
+export type RegionalTheaterId =
+  | 'americas'
+  | 'europe'
+  | 'middle_east'
+  | 'indo_pacific'
+  | 'africa_atlantic';
+
+export type TheaterUnitPosture =
+  | 'Deterrence Patrol'
+  | 'Forward Presence'
+  | 'Rapid Contingency';
+
+export interface DeployableMilitaryUnit {
+  id: string;
+  name: string;
+  shortCode: string;
+  branch: MilitaryServiceBranch;
+  unitType: string;
+  strengthRating: number;
+  diplomacyBonusPct: number;
+  securityBonusPct: number;
+  preferredTheaters: RegionalTheaterId[];
+  specialtyNote: string;
+}
+
+export interface TheaterUnitAssignment {
+  unitId: string;
+  theaterId: RegionalTheaterId;
+  posture: TheaterUnitPosture;
+  assignedMonth: number;
+}
+
+export interface RegionalTheaterDefinition {
+  id: RegionalTheaterId;
+  name: string;
+  commandCode: string;
+  hqLabel: string;
+  strategicSummary: string;
+  mapPin: { x: number; y: number };
+  sectorBox: { x: number; y: number; width: number; height: number };
+  labelAnchor: { x: number; y: number };
+  countries: string[];
+  maxUnits: number;
+}
+
+export interface TheaterSecurityEventDefinition {
+  id: string;
+  theaterId: RegionalTheaterId;
+  title: string;
+  category: 'Maritime Security' | 'Air Defense' | 'Border Stability' | 'Counter-Proliferation';
+  threatSummary: string;
+  baseSuccessPct: number;
+  recommendedBranches: MilitaryServiceBranch[];
+  successRewards: {
+    diplomaticDelta: number;
+    approvalDelta: number;
+    readinessDelta: number;
+  };
+  failurePenalties: {
+    diplomaticDelta: number;
+    approvalDelta: number;
+    readinessDelta: number;
+  };
+}
+
+export interface TheaterSecurityEventOutcome {
+  id: string;
+  eventId: string;
+  theaterId: RegionalTheaterId;
+  theaterName: string;
+  title: string;
+  month: number;
+  succeeded: boolean;
+  probabilityUsedPct: number;
+  unitBonusPct: number;
+  assignedUnitNames: string[];
+  headline: string;
+  summary: string;
+  diplomaticDelta: number;
+  approvalDelta: number;
+  readinessDelta: number;
+}
+
+export interface TheaterDeploymentContext {
+  theaterId: RegionalTheaterId;
+  theaterName: string;
+  commandCode: string;
+  assignedUnitCount: number;
+  assignedUnitNames: string[];
+  diplomacyOddsBonusPct: number;
+  securityOddsBonusPct: number;
+  operationSuccessProbabilityPct: number;
+  deterrenceLabel: string;
 }
 
 export interface TermHistoryEntry {
@@ -569,7 +822,14 @@ export interface ScenarioDefinition {
   initialCabinet: CabinetMember[];
   initialMilitary: MilitaryCommandState;
   initialInstitutions: InstitutionalState;
+  climateCategory?: ScenarioClimateCategory;
   isCustom?: boolean;
+  isHistorical?: boolean;
+  historicalYear?: number;
+  historicalEraTag?: string;
+  recommendedPresidentId?: string;
+  historicalBenchmarkNote?: string;
+  historicalKeyEvents?: string[];
 }
 
 export interface CareerEvaluation {
@@ -906,7 +1166,8 @@ export interface DiplomaticSummitOutcome {
     | 'Historic Breakthrough Treaty'
     | 'Constructive Joint Communiqué'
     | 'Stalled Talks'
-    | 'Summit Walkout';
+    | 'Summit Walkout'
+    | 'Security Incident';
   walkedOut: boolean;
   finalTrust: number;
   walkoutRiskPct: number;
@@ -917,6 +1178,75 @@ export interface DiplomaticSummitOutcome {
   headline: string;
   summary: string;
   treatyTitle?: string;
+  securityEvent?: 'Assassination Attempt' | 'Kidnapping' | null;
+  securityEventRiskPct?: number;
+  secretServiceProtected?: boolean;
+  forceReadinessDelta?: number;
+  budgetCostTrillions?: number;
+}
+
+export type ExecutivePowerCategory =
+  | 'Cabinet & Bureaucracy'
+  | 'Economic & Fiscal'
+  | 'National Security'
+  | 'Congress & Judiciary'
+  | 'Legacy & Media'
+  | 'Science, Space & Energy'
+  | 'Healthcare & Public Welfare'
+  | 'Infrastructure & Housing'
+  | 'Trade, Labor & Education'
+  | 'Intelligence & Cyber Command';
+
+export interface ExecutivePowerDefinition {
+  id: string;
+  category: ExecutivePowerCategory;
+  number: number;
+  title: string;
+  subtitle: string;
+  description: string;
+  instrumentType: 'Executive Order' | 'Policy Directive' | 'Emergency Action' | 'Diplomatic Order' | 'White House Proclamation';
+  cooldownMonths: number;
+  effectSummary: string;
+  isNewExpansion?: boolean;
+  customHeadline?: string;
+  forceReadinessDelta?: number;
+  cabinetLoyaltyDelta?: number;
+  blocImpacts?: Partial<VoterBlocs>;
+  metricImpacts: {
+    approval?: number;
+    congressSupport?: number;
+    gdpGrowth?: number;
+    inflation?: number;
+    unemployment?: number;
+    diplomaticStanding?: number;
+    nationalDebtTrillions?: number;
+  };
+}
+
+export interface ExecutedPowerRecord {
+  id: string;
+  powerId: string;
+  title: string;
+  category: ExecutivePowerCategory;
+  month: number;
+  summary: string;
+}
+
+export interface JcsConfirmationResult {
+  approved: boolean;
+  senateYea: number;
+  senateNay: number;
+  voteMarginLabel: string;
+  nomineeName: string;
+  branch: string;
+  doctrine: string;
+  loyalty: number;
+  competence: number;
+  currentCounsel: string;
+  confirmationHeadline: string;
+  committeeSummary: string;
+  congressDelta: number;
+  approvalDelta: number;
 }
 
 export interface SavedCareerState {
@@ -955,6 +1285,92 @@ export interface SavedCareerState {
   lastRegionalOutreachMonth?: number;
   lastIntelBriefMonth?: number;
   lastSummitMonth?: number;
+  executedPowers?: ExecutedPowerRecord[];
+  adminSuite?: AdminSuiteState;
+  militaryRoster?: MilitaryServiceMember[];
+  promotionHistory?: MilitaryPromotionRecord[];
+  medalHistory?: MilitaryMedalAwardRecord[];
+  theaterAssignments?: TheaterUnitAssignment[];
+  resolvedTheaterEventMonths?: Partial<Record<RegionalTheaterId, number>>;
+  resolvedHistoricalEvents?: ResolvedHistoricalEventRecord[];
+  secretServiceProtection?: boolean;
   collapseReason?: string;
   updatedAt: string;
 }
+
+export type HistoricalEventCategory =
+  | 'constitutional'
+  | 'security'
+  | 'economic'
+  | 'geopolitical';
+
+export interface HistoricalEventOption {
+  id: string;
+  label: string;
+  stanceTag: string;
+  description: string;
+  policyDraft: string;
+  speechDraft: string;
+  metricDeltas: {
+    approval: number;
+    congressSupport: number;
+    gdpGrowth: number;
+    inflation: number;
+    unemployment: number;
+    diplomaticStanding: number;
+  };
+  blocImpacts: Partial<VoterBlocs>;
+  defconDelta?: number;
+  readinessDelta?: number;
+  headline: string;
+  newsTone: 'positive' | 'neutral' | 'critical';
+}
+
+export interface HistoricalEventItem {
+  id: string;
+  title: string;
+  historicalDate: string;
+  year: number;
+  category: HistoricalEventCategory;
+  severity: 'High' | 'Critical' | 'Historic';
+  linkedScenarioIds: string[];
+  summary: string;
+  historicalPrecedent: string;
+  options: HistoricalEventOption[];
+}
+
+export interface ResolvedHistoricalEventRecord {
+  eventId: string;
+  title: string;
+  historicalDate: string;
+  monthResolved: number;
+  optionId: string;
+  decision: string;
+  headline: string;
+}
+
+export interface DebateStanceOption {
+  id: string;
+  title: string;
+  stanceText: string;
+  tone: 'aggressive' | 'technocratic' | 'visionary';
+  blocImpacts: {
+    workingClass?: number;
+    suburbanModerates?: number;
+    techFinance?: number;
+    seniors?: number;
+    youngVoters?: number;
+  };
+  momentumDelta: number;
+  approvalDelta: number;
+  mediaReaction: string;
+}
+
+export interface DebateRound {
+  topic: string;
+  category: 'economy' | 'defense' | 'domestic' | 'foreign' | 'technology';
+  moderatorPrompt: string;
+  opponentAttack: string;
+  stances: DebateStanceOption[];
+}
+

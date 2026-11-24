@@ -21,12 +21,18 @@ import {
   ScrollText,
   Mic,
   Coins,
+  MessageSquare,
+  Scale,
+  Ship,
+  Users,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   DiplomaticMission,
   EmergencyResolutionRecord,
   InstitutionalState,
   LegislativeRecordItem,
+  MilestoneItem,
   MilitaryCommandState,
   MonthlyBriefing,
   NationalMetrics,
@@ -46,6 +52,7 @@ import { GlobalEventsTicker } from './GlobalEventsTicker';
 import { FinancialOutlookCard } from './FinancialOutlookCard';
 import { ExecutiveOrdersModal } from './ExecutiveOrdersModal';
 import { InstitutionalStabilityMonitor } from './InstitutionalStabilityMonitor';
+import { AdministrationTimeline } from './AdministrationTimeline';
 import { formatMonthCalendar } from '../data/historicalPresidents';
 import { getPartyMeta } from '../data/scenarios';
 import {
@@ -71,6 +78,7 @@ interface BriefingDeskProps {
   institutions: InstitutionalState;
   history: TermHistoryEntry[];
   legislativeRecords: LegislativeRecordItem[];
+  milestones: MilestoneItem[];
   diplomaticMissions: DiplomaticMission[];
   newsFeed: NewsHeadlineItem[];
   briefing: MonthlyBriefing;
@@ -116,6 +124,14 @@ interface BriefingDeskProps {
   whipUsedThisMonth: boolean;
   onOpenBudgetNegotiator: () => void;
   lastBudgetMonth: number | null;
+  onOpenExecutivePowersHub: () => void;
+  onOpenDebateArena?: () => void;
+  onOpenSupremeCourt?: () => void;
+  onOpenTradePolicy?: () => void;
+  onOpenWhiteHouseTours?: () => void;
+  lastTourMonth?: number | null;
+  secretServiceProtection?: boolean;
+  onToggleSecretServiceProtection?: () => void;
   onSubmitTurn: (
     policyDirective: string,
     publicMessaging: string,
@@ -169,6 +185,7 @@ export const BriefingDesk: React.FC<BriefingDeskProps> = ({
   institutions,
   history,
   legislativeRecords,
+  milestones,
   diplomaticMissions,
   newsFeed,
   briefing,
@@ -208,6 +225,14 @@ export const BriefingDesk: React.FC<BriefingDeskProps> = ({
   whipUsedThisMonth,
   onOpenBudgetNegotiator,
   lastBudgetMonth,
+  onOpenExecutivePowersHub,
+  onOpenDebateArena,
+  onOpenSupremeCourt,
+  onOpenTradePolicy,
+  onOpenWhiteHouseTours,
+  lastTourMonth,
+  secretServiceProtection = false,
+  onToggleSecretServiceProtection,
   onSubmitTurn,
 }) => {
   const [briefingFocus, setBriefingFocus] = useState<'briefing' | 'fallout'>(
@@ -289,6 +314,14 @@ export const BriefingDesk: React.FC<BriefingDeskProps> = ({
             <span aria-hidden="true">·</span>
             <span>{scenarioTitle}</span>
             <span aria-hidden="true">·</span>
+            <span className="font-semibold text-[#132238]">
+              {profile.gameDifficulty === 'easy'
+                ? 'Easy'
+                : profile.gameDifficulty === 'hard'
+                ? 'Hard'
+                : 'Medium'}
+            </span>
+            <span aria-hidden="true">·</span>
             <span className="font-mono-num">
               Month {String(currentMonth).padStart(2, '0')} of{' '}
               {profile.termLength}
@@ -353,6 +386,48 @@ export const BriefingDesk: React.FC<BriefingDeskProps> = ({
               <ScrollText className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Executive Orders ({executiveOrdersCount})</span>
             </button>
+            <button
+              type="button"
+              onClick={onOpenExecutivePowersHub}
+              className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100 whitespace-nowrap"
+            >
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Executive Powers (250)</span>
+            </button>
+            {onOpenSupremeCourt && (
+              <button
+                type="button"
+                onClick={onOpenSupremeCourt}
+                className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-800 hover:bg-stone-50 whitespace-nowrap"
+              >
+                <Scale className="h-3.5 w-3.5 text-[#132238]" aria-hidden="true" />
+                <span>Supreme Court</span>
+              </button>
+            )}
+            {onOpenTradePolicy && (
+              <button
+                type="button"
+                onClick={onOpenTradePolicy}
+                className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-800 hover:bg-stone-50 whitespace-nowrap"
+              >
+                <Ship className="h-3.5 w-3.5 text-[#132238]" aria-hidden="true" />
+                <span>Trade &amp; Tariffs</span>
+              </button>
+            )}
+            {onOpenWhiteHouseTours && (
+              <button
+                type="button"
+                onClick={onOpenWhiteHouseTours}
+                className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-800 hover:bg-stone-50 whitespace-nowrap"
+              >
+                <Users className="h-3.5 w-3.5 text-[#132238]" aria-hidden="true" />
+                <span>
+                  {lastTourMonth === currentMonth
+                    ? `Tour Hosted (M${currentMonth})`
+                    : 'White House Tours'}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onToggleMute}
@@ -462,6 +537,59 @@ export const BriefingDesk: React.FC<BriefingDeskProps> = ({
             </div>
           </div>
         </div>
+
+        {onToggleSecretServiceProtection && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3.5">
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck
+                className={`mt-0.5 h-4 w-4 shrink-0 ${
+                  secretServiceProtection
+                    ? 'text-emerald-700'
+                    : 'text-stone-400'
+                }`}
+                aria-hidden="true"
+              />
+              <div>
+                <p className="text-xs font-semibold text-stone-900">
+                  Secret Service Protection{' '}
+                  <span
+                    className={`font-mono-num ${
+                      secretServiceProtection
+                        ? 'text-emerald-800'
+                        : 'text-stone-500'
+                    }`}
+                  >
+                    · {secretServiceProtection ? 'ON' : 'OFF'}
+                  </span>
+                </p>
+                <p className="text-[11px] text-stone-600">
+                  Allocates protective budget (+$0.01T / $10B per activation &amp;
+                  summit) to cut Assassination Attempt and Kidnapping security
+                  event probability by 75% during Diplomatic Summits.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={secretServiceProtection}
+              onClick={onToggleSecretServiceProtection}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                secretServiceProtection
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100'
+                  : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-50'
+              }`}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>
+                {secretServiceProtection
+                  ? 'Protection Active (ON)'
+                  : 'Enable Protection (OFF)'}
+              </span>
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Institutional Stability Monitor */}
@@ -473,45 +601,68 @@ export const BriefingDesk: React.FC<BriefingDeskProps> = ({
         onTriggerEmergencyCheck={onTriggerEmergencyCheck}
       />
 
-      {/* Impeachment Threshold Crisis Alert (Approval < 5%) */}
-      {metrics.approval < 5 && (
+      {profile.historicalBenchmarkNote && (
         <section
-          role="alert"
-          aria-label="Impeachment threshold triggered"
-          className="rounded-xl border-2 border-red-400 bg-red-50 p-5 flex flex-wrap items-center justify-between gap-4"
+          aria-label="Historical scenario benchmark"
+          className="rounded-xl border border-stone-200 bg-white px-5 py-3.5 flex flex-wrap items-baseline gap-x-3 gap-y-1"
         >
-          <div className="space-y-1">
-            <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-red-900">
-              <Gavel className="h-3.5 w-3.5" aria-hidden="true" />
-              Constitutional Crisis · Approval Below 5.0% (
-              {metrics.approval.toFixed(1)}%)
-            </p>
-            <p className="text-sm font-medium text-red-950">
-              Your public support has fallen below the 5% threshold. House
-              leadership has prepared Articles of Impeachment for a floor vote
-              and Senate trial.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={onOpenImpeachment}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-red-800 px-4 py-2 text-xs font-semibold text-white hover:bg-red-900"
-            >
-              <Gavel className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Face Impeachment Vote</span>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenResign}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2 text-xs font-semibold text-red-900 hover:bg-red-100"
-            >
-              <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Resign Presidency</span>
-            </button>
-          </div>
+          <span className="font-mono-num text-xs font-semibold text-[#8B1E24]">
+            Historical Scenario · {profile.startingYear || 'Archive'}
+          </span>
+          <p className="text-xs leading-relaxed text-stone-600">
+            {profile.historicalBenchmarkNote}
+          </p>
         </section>
       )}
+
+      {/* Impeachment Threshold Crisis Alert */}
+      {(() => {
+        const impeachmentThreshold =
+          profile.gameDifficulty === 'easy'
+            ? 3
+            : profile.gameDifficulty === 'hard'
+            ? 12
+            : 5;
+        if (metrics.approval >= impeachmentThreshold) return null;
+        return (
+          <section
+            role="alert"
+            aria-label="Impeachment threshold triggered"
+            className="rounded-xl border-2 border-red-400 bg-red-50 p-5 flex flex-wrap items-center justify-between gap-4"
+          >
+            <div className="space-y-1">
+              <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-red-900">
+                <Gavel className="h-3.5 w-3.5" aria-hidden="true" />
+                Constitutional Crisis · Approval Below{' '}
+                {impeachmentThreshold.toFixed(1)}% ({metrics.approval.toFixed(1)}%)
+              </p>
+              <p className="text-sm font-medium text-red-950">
+                Your public support has fallen below the {impeachmentThreshold}%
+                threshold. House leadership has prepared Articles of Impeachment
+                for a floor vote and Senate trial.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={onOpenImpeachment}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-800 px-4 py-2 text-xs font-semibold text-white hover:bg-red-900"
+              >
+                <Gavel className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Face Impeachment Vote</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenResign}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-4 py-2 text-xs font-semibold text-red-900 hover:bg-red-100"
+              >
+                <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Resign Presidency</span>
+              </button>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Re-Election Decision & Campaign Headquarters */}
       {reelectionCampaign.decision === 'undecided' && (
@@ -604,6 +755,21 @@ export const BriefingDesk: React.FC<BriefingDeskProps> = ({
               </div>
             </div>
           </div>
+
+          {onOpenDebateArena && (
+            <div>
+              <button
+                type="button"
+                onClick={onOpenDebateArena}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#132238] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#1E3557]"
+              >
+                <MessageSquare className="h-4 w-4 text-[#C99A3B]" aria-hidden="true" />
+                <span>
+                  Host Live Presidential Debate vs. {reelectionCampaign.opponentName}
+                </span>
+              </button>
+            </div>
+          )}
 
           <div className="space-y-2">
             <p className="text-xs font-semibold text-stone-600">
@@ -1648,6 +1814,17 @@ export const BriefingDesk: React.FC<BriefingDeskProps> = ({
           )}
         </section>
       </div>
+
+      {/* Administration Historical Trajectory Timeline */}
+      <AdministrationTimeline
+        profile={profile}
+        scenarioTitle={scenarioTitle}
+        currentMonth={currentMonth}
+        milestones={milestones}
+        emergencyResolutions={emergencyResolutions}
+        history={history}
+        onNavigateTab={onNavigateTab}
+      />
 
       {/* Real-Time Simulated Global Events Ticker */}
       <GlobalEventsTicker

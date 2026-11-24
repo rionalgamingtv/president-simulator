@@ -4,6 +4,7 @@ import {
   DiplomaticSummitPower,
   DiplomaticSummitRound,
   DiplomaticSummitTone,
+  MilitaryCommandState,
   NationalMetrics,
 } from '../types/game';
 
@@ -95,25 +96,73 @@ export const SUMMIT_FOREIGN_POWERS: DiplomaticSummitPower[] = [
 export function computeInitialSummitMetrics(
   power: DiplomaticSummitPower,
   metrics: NationalMetrics,
-  stateSecCompetence: number
+  stateSecCompetence: number,
+  theaterDiplomacyBonusPct = 0
 ): { startingTrust: number; baseWalkoutRiskPct: number } {
   const standingShift = Math.round((metrics.diplomaticStanding - 55) * 0.25);
   const secShift = Math.round((stateSecCompetence - 65) * 0.2);
+  const theaterTrustShift = Math.round(theaterDiplomacyBonusPct * 0.6);
+  const theaterRiskReduction = Math.round(theaterDiplomacyBonusPct * 0.35);
 
   const startingTrust = clamp(
-    power.baseTrust + standingShift + secShift,
+    power.baseTrust + standingShift + secShift + theaterTrustShift,
     20,
-    82
+    86
   );
   const baseWalkoutRiskPct = clamp(
     power.baseWalkoutRiskPct -
       Math.round((metrics.diplomaticStanding - 55) * 0.15) -
-      Math.round((stateSecCompetence - 65) * 0.12),
-    4,
+      Math.round((stateSecCompetence - 65) * 0.12) -
+      theaterRiskReduction,
+    3,
     45
   );
 
   return { startingTrust, baseWalkoutRiskPct };
+}
+
+export function computeSummitSecurityRiskPct(params: {
+  power: DiplomaticSummitPower;
+  intelThreatLevel?: MilitaryCommandState['intelThreatLevel'];
+  defconLevel?: number;
+  theaterDiplomacyBonusPct?: number;
+  secretServiceProtection?: boolean;
+}): { baseRiskPct: number; effectiveRiskPct: number } {
+  const {
+    power,
+    intelThreatLevel = 'Elevated',
+    defconLevel = 4,
+    theaterDiplomacyBonusPct = 0,
+    secretServiceProtection = false,
+  } = params;
+
+  const postureBase =
+    power.postureLabel === 'Strategic Rival'
+      ? 24
+      : power.postureLabel === 'Competitive Partner'
+      ? 15
+      : 8;
+  const threatAdd =
+    intelThreatLevel === 'Severe'
+      ? 10
+      : intelThreatLevel === 'High'
+      ? 6
+      : intelThreatLevel === 'Elevated'
+      ? 2
+      : 0;
+  const defconAdd = defconLevel <= 2 ? 6 : defconLevel === 3 ? 3 : 0;
+  const theaterMitigation = Math.round(theaterDiplomacyBonusPct * 0.25);
+
+  const baseRiskPct = clamp(
+    postureBase + threatAdd + defconAdd - theaterMitigation,
+    5,
+    42
+  );
+  const effectiveRiskPct = secretServiceProtection
+    ? Math.max(1, Math.round(baseRiskPct * 0.25))
+    : baseRiskPct;
+
+  return { baseRiskPct, effectiveRiskPct };
 }
 
 export function buildSummitRound1(
@@ -294,8 +343,22 @@ export function evaluateDiplomaticSummit(params: {
   startingTrust: number;
   baseWalkoutRiskPct: number;
   choices: DiplomaticSummitChoice[];
+  secretServiceProtection?: boolean;
+  intelThreatLevel?: MilitaryCommandState['intelThreatLevel'];
+  defconLevel?: number;
+  theaterDiplomacyBonusPct?: number;
 }): DiplomaticSummitOutcome {
-  const { power, month, startingTrust, baseWalkoutRiskPct, choices } = params;
+  const {
+    power,
+    month,
+    startingTrust,
+    baseWalkoutRiskPct,
+    choices,
+    secretServiceProtection = false,
+    intelThreatLevel = 'Elevated',
+    defconLevel = 4,
+    theaterDiplomacyBonusPct = 0,
+  } = params;
 
   const trustSum = choices.reduce((acc, c) => acc + c.trustDelta, 0);
   const riskSum = choices.reduce((acc, c) => acc + c.walkoutRiskDelta, 0);
@@ -305,6 +368,89 @@ export function evaluateDiplomaticSummit(params: {
     2,
     70
   );
+
+  const { effectiveRiskPct } = computeSummitSecurityRiskPct({
+    power,
+    intelThreatLevel,
+    defconLevel,
+    theaterDiplomacyBonusPct,
+    secretServiceProtection,
+  });
+  const budgetCostTrillions = secretServiceProtection ? 0.01 : 0;
+
+  // Roll for Assassination Attempt or Kidnapping security event during summit
+  if (Math.random() * 100 < effectiveRiskPct) {
+    const securityEvent: 'Assassination Attempt' | 'Kidnapping' =
+      Math.random() < 0.5 ? 'Assassination Attempt' : 'Kidnapping';
+
+    if (secretServiceProtection) {
+      const headline =
+        securityEvent === 'Assassination Attempt'
+          ? `Secret Service Intercepts ${power.country} Summit Assassination Attempt`
+          : `Secret Service Foils Kidnapping Plot at ${power.country} Summit`;
+      const summary =
+        securityEvent === 'Assassination Attempt'
+          ? `Counter-assault teams neutralized an armed threat along the summit motorcade corridor in ${power.country} before negotiations were breached (residual ${effectiveRiskPct}% risk with Protection ON).`
+          : `Advance Secret Service agents disrupted a kidnapping ambush targeting senior U.S. summit staff near ${power.country}'s venue (residual ${effectiveRiskPct}% risk with Protection ON).`;
+
+      return {
+        id: `summit-${power.id}-m${month}-${Date.now()}`,
+        powerId: power.id,
+        country: power.country,
+        summitTitle: power.summitTitle,
+        counterpartName: power.counterpartName,
+        month,
+        verdict: 'Security Incident',
+        walkedOut: false,
+        finalTrust: clamp(finalTrust - 5, 10, 95),
+        walkoutRiskPct,
+        diplomaticDelta: -1.2,
+        approvalDelta: 0.9,
+        gdpDelta: -0.03,
+        inflationDelta: 0.02,
+        headline,
+        summary,
+        securityEvent,
+        securityEventRiskPct: effectiveRiskPct,
+        secretServiceProtected: true,
+        forceReadinessDelta: -2,
+        budgetCostTrillions,
+      };
+    }
+
+    const headline =
+      securityEvent === 'Assassination Attempt'
+        ? `Assassination Attempt Disrupts ${power.country} Diplomatic Summit`
+        : `Kidnapping Crisis Strikes U.S. Delegation at ${power.country} Summit`;
+    const summary =
+      securityEvent === 'Assassination Attempt'
+        ? `An active Assassination Attempt breached outer summit perimeters in ${power.country} with Secret Service Protection OFF (${effectiveRiskPct}% risk), forcing an emergency evacuation and rattling allies.`
+        : `Hostile operatives executed a Kidnapping targeting a senior diplomatic aide during transit at the ${power.country} summit (${effectiveRiskPct}% risk, Protection OFF), halting talks in crisis.`;
+
+    return {
+      id: `summit-${power.id}-m${month}-${Date.now()}`,
+      powerId: power.id,
+      country: power.country,
+      summitTitle: power.summitTitle,
+      counterpartName: power.counterpartName,
+      month,
+      verdict: 'Security Incident',
+      walkedOut: true,
+      finalTrust: clamp(finalTrust - 18, 5, 85),
+      walkoutRiskPct,
+      diplomaticDelta: -4.2,
+      approvalDelta: -4.5,
+      gdpDelta: -0.18,
+      inflationDelta: 0.12,
+      headline,
+      summary,
+      securityEvent,
+      securityEventRiskPct: effectiveRiskPct,
+      secretServiceProtected: false,
+      forceReadinessDelta: -6,
+      budgetCostTrillions: 0,
+    };
+  }
 
   const finalChoice = choices[choices.length - 1];
   const declinedSignature = finalChoice?.id === 'r3_walk_away_firm';
@@ -333,6 +479,10 @@ export function evaluateDiplomaticSummit(params: {
       inflationDelta: 0.05,
       headline: `${power.country} Delegation Walks Out of ${power.summitTitle}`,
       summary: `Sharp disagreements over ${power.coreIssue.toLowerCase()} triggered a premature walkout by ${power.counterpartName} (${walkoutRiskPct}% brinkmanship risk). Allied capitals urged renewed back-channel calm.`,
+      securityEvent: null,
+      securityEventRiskPct: effectiveRiskPct,
+      secretServiceProtected: secretServiceProtection,
+      budgetCostTrillions,
     };
   }
 
@@ -354,6 +504,10 @@ export function evaluateDiplomaticSummit(params: {
       inflationDelta: 0.02,
       headline: `President Declines Unfavorable Terms at ${power.country} Summit`,
       summary: `Talks adjourned without a joint treaty after the White House refused last-minute concessions on ${power.coreIssue.toLowerCase()}. Hawks praised the firm posture while foreign ministries noted stalled momentum.`,
+      securityEvent: null,
+      securityEventRiskPct: effectiveRiskPct,
+      secretServiceProtected: secretServiceProtection,
+      budgetCostTrillions,
     };
   }
 
@@ -402,5 +556,9 @@ export function evaluateDiplomaticSummit(params: {
     summary: breakthrough
       ? `Three rounds of disciplined diplomacy with ${power.counterpartName} lifted trust to ${finalTrust}/100, securing binding commitments on ${power.coreIssue.toLowerCase()} (+${diplomaticDelta.toFixed(1)} Diplomatic Standing).`
       : `Patient bargaining with ${power.counterpartName} yielded an actionable bilateral framework on ${power.coreIssue.toLowerCase()} (+${diplomaticDelta.toFixed(1)} Diplomatic Standing).`,
+    securityEvent: null,
+    securityEventRiskPct: effectiveRiskPct,
+    secretServiceProtected: secretServiceProtection,
+    budgetCostTrillions,
   };
 }

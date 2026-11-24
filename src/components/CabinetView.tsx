@@ -10,13 +10,16 @@ import {
   Search,
   UserX,
   AlertTriangle,
+  Shield,
   ShieldAlert,
   Loader2,
   Newspaper,
   Building2,
   Handshake,
+  Scale,
 } from 'lucide-react';
 import {
+  AdminSuiteState,
   CabinetConfirmationResult,
   CabinetDepartment,
   CabinetHarmonyOutcome,
@@ -25,15 +28,21 @@ import {
   FireTargetCategory,
   MilitaryCommandState,
   NationalMetrics,
+  NewsHeadlineItem,
   OfficialDismissalResult,
   PartyId,
   VicePresidentProfile,
+  VpAssignmentId,
   VpNominationResult,
 } from '../types/game';
 import { getPartyMeta } from '../data/scenarios';
 import { CABINET_ROSTER_OPTIONS, VP_CANDIDATES } from '../data/appointees';
-import { getCabinetHarmonySummary } from '../data/cabinetHarmony';
+import {
+  computeCabinetMemberApproval,
+  getCabinetHarmonySummary,
+} from '../data/cabinetHarmony';
 import { CabinetHarmonyModal } from './CabinetHarmonyModal';
+import { CabinetSuitePanel } from './CabinetSuitePanel';
 
 interface CabinetViewProps {
   party?: PartyId;
@@ -42,6 +51,7 @@ interface CabinetViewProps {
   cabinet: CabinetMember[];
   military: MilitaryCommandState;
   metrics: NationalMetrics;
+  newsFeed?: NewsHeadlineItem[];
   isReplacingId: CabinetDepartment | null;
   isFiringOfficial: boolean;
   isNominatingVp: boolean;
@@ -64,6 +74,14 @@ interface CabinetViewProps {
   onNominateVp: (nomineeDirection: string) => Promise<void>;
   onFireOfficial: (req: FireOfficialRequest) => Promise<void>;
   onDraftFromCounsel: (roleLabel: string, name: string, counsel: string) => void;
+  adminSuite: AdminSuiteState;
+  onChangeVpAssignment: (assignment: VpAssignmentId) => void;
+  onRunLeakAudit: (style: 'clearance' | 'open_door' | 'taskforce') => void;
+  onCommendSecretary: (member: CabinetMember) => void;
+  onActingSwap: (member: CabinetMember) => void;
+  onQueueTaskForce: (policyDraft: string, speechDraft: string) => void;
+  onOpenNominateJcsModal: () => void;
+  onOpenPardonsModal?: () => void;
 }
 
 const WHITE_HOUSE_ROLE_IDS = new Set<CabinetDepartment>([
@@ -164,6 +182,7 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
   cabinet,
   military,
   metrics,
+  newsFeed = [],
   isReplacingId,
   isFiringOfficial,
   isNominatingVp,
@@ -183,6 +202,14 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
   onNominateVp,
   onFireOfficial,
   onDraftFromCounsel,
+  adminSuite,
+  onChangeVpAssignment,
+  onRunLeakAudit,
+  onCommendSecretary,
+  onActingSwap,
+  onQueueTaskForce,
+  onOpenNominateJcsModal,
+  onOpenPardonsModal,
 }) => {
   const partyMeta = getPartyMeta(party);
   const [nominateTarget, setNominateTarget] = useState<CabinetMember | null>(
@@ -194,9 +221,53 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
   const [showNominateVpModal, setShowNominateVpModal] = useState(false);
   const [vpDirectionInput, setVpDirectionInput] = useState('');
   const [vpSearch, setVpSearch] = useState('');
+  const [cabinetSearch, setCabinetSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'Aligned' | 'Cautious' | 'Strained'
+  >('all');
+  const [sortBy, setSortBy] = useState<'default' | 'approval_desc' | 'approval_asc'>(
+    'default'
+  );
 
   const [fireTarget, setFireTarget] = useState<PendingFireTarget | null>(null);
   const [fireReasonInput, setFireReasonInput] = useState(QUICK_FIRE_REASONS[0]);
+
+  const approvalByMemberId = React.useMemo(() => {
+    const map = new Map<
+      CabinetDepartment,
+      ReturnType<typeof computeCabinetMemberApproval>
+    >();
+    for (const m of cabinet) {
+      map.set(m.id, computeCabinetMemberApproval(m, newsFeed, metrics.approval));
+    }
+    return map;
+  }, [cabinet, newsFeed, metrics.approval]);
+
+  const avgPublicApproval = React.useMemo(() => {
+    if (cabinet.length === 0) return 0;
+    let sum = 0;
+    for (const m of cabinet) {
+      sum += approvalByMemberId.get(m.id)?.publicApproval ?? 50;
+    }
+    return Math.round(sum / cabinet.length);
+  }, [cabinet, approvalByMemberId]);
+
+  const filteredCabinet = React.useMemo(() => {
+    const base = cabinet.filter((m) => {
+      if (statusFilter !== 'all' && m.status !== statusFilter) return false;
+      const q = cabinetSearch.trim().toLowerCase();
+      if (!q) return true;
+      return `${m.name} ${m.roleTitle} ${m.leaning} ${m.currentCounsel}`
+        .toLowerCase()
+        .includes(q);
+    });
+    if (sortBy === 'default') return base;
+    return [...base].sort((a, b) => {
+      const aVal = approvalByMemberId.get(a.id)?.publicApproval ?? 50;
+      const bVal = approvalByMemberId.get(b.id)?.publicApproval ?? 50;
+      return sortBy === 'approval_desc' ? bVal - aVal : aVal - bVal;
+    });
+  }, [cabinet, statusFilter, cabinetSearch, sortBy, approvalByMemberId]);
 
   const [harmonyTarget, setHarmonyTarget] = useState<CabinetMember | null>(
     null
@@ -830,6 +901,13 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
                 </strong>
               </span>
               <span className="text-stone-300" aria-hidden="true">|</span>
+              <span className="text-stone-700">
+                Avg Public Approval:{' '}
+                <strong className="text-stone-900">
+                  {avgPublicApproval}%
+                </strong>
+              </span>
+              <span className="text-stone-300" aria-hidden="true">|</span>
               <span className="text-emerald-700 font-semibold">
                 {harmonySummary.alignedCount} Aligned
               </span>
@@ -887,8 +965,65 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
           </div>
         )}
 
-        <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-          {cabinet.map((member) => {
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="relative w-full sm:w-72">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400"
+              aria-hidden="true"
+            />
+            <input
+              type="text"
+              value={cabinetSearch}
+              onChange={(e) => setCabinetSearch(e.target.value)}
+              placeholder="Filter officials by name, role, or counsel..."
+              className="w-full rounded-lg border border-stone-300 bg-white pl-8 pr-3 py-1.5 text-xs text-stone-900 focus:border-[#132238] focus:outline-none"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1 rounded-lg bg-stone-100 p-1">
+              {(['all', 'Aligned', 'Cautious', 'Strained'] as const).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setStatusFilter(st)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    statusFilter === st
+                      ? 'bg-white text-[#132238] shadow-sm'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  {st === 'all' ? 'All Officials' : st}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1 rounded-lg bg-stone-100 p-1">
+              {(
+                [
+                  { id: 'default', label: 'Default' },
+                  { id: 'approval_desc', label: 'Top Approval' },
+                  { id: 'approval_asc', label: 'Lowest Approval' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setSortBy(opt.id)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap ${
+                    sortBy === opt.id
+                      ? 'bg-white text-[#132238] shadow-sm'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+          {filteredCabinet.map((member) => {
             const isReplacing = isReplacingId === member.id;
             const isWhiteHouseStaff = WHITE_HOUSE_ROLE_IDS.has(member.id);
             const isActing = member.name.toLowerCase().startsWith('acting ');
@@ -959,6 +1094,61 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {(() => {
+                    const approvalSummary =
+                      approvalByMemberId.get(member.id) ||
+                      computeCabinetMemberApproval(
+                        member,
+                        newsFeed,
+                        metrics.approval
+                      );
+                    const barColorClass =
+                      approvalSummary.publicApproval >= 70
+                        ? 'bg-emerald-700'
+                        : approvalSummary.publicApproval >= 52
+                        ? 'bg-[#C99A3B]'
+                        : approvalSummary.publicApproval >= 38
+                        ? 'bg-amber-600'
+                        : 'bg-red-700';
+                    const textColorClass =
+                      approvalSummary.publicApproval >= 70
+                        ? 'text-emerald-800'
+                        : approvalSummary.publicApproval >= 52
+                        ? 'text-stone-900'
+                        : approvalSummary.publicApproval >= 38
+                        ? 'text-amber-800'
+                        : 'text-red-700';
+
+                    return (
+                      <div className="rounded-lg border border-stone-200/80 bg-white px-3 py-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-stone-600">
+                            Public Approval
+                          </span>
+                          <span
+                            className={`font-mono-num font-bold ${textColorClass}`}
+                          >
+                            {approvalSummary.publicApproval}%
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
+                          <div
+                            className={`h-full transition-all ${barColorClass}`}
+                            style={{
+                              width: `${approvalSummary.publicApproval}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-stone-500">
+                          <span>{approvalSummary.sentimentLabel}</span>
+                          <span className="font-mono-num">
+                            {approvalSummary.driverLabel}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div className="rounded-lg border border-stone-200 bg-white p-3.5">
                     <p className="text-[11px] font-semibold text-stone-500">
@@ -1054,6 +1244,17 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
         </div>
       </section>
 
+      <CabinetSuitePanel
+        currentMonth={currentMonth}
+        cabinet={cabinet}
+        adminSuite={adminSuite}
+        onChangeVpAssignment={onChangeVpAssignment}
+        onRunLeakAudit={onRunLeakAudit}
+        onCommendSecretary={onCommendSecretary}
+        onActingSwap={onActingSwap}
+        onQueueTaskForce={onQueueTaskForce}
+      />
+
       {/* Other White House, Defense & Executive Branch Officials */}
       <section className="rounded-xl border border-stone-200 bg-white p-6 space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-stone-200 pb-4">
@@ -1088,23 +1289,34 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
                 {military.jointChiefsChair.branch} · {military.jointChiefsChair.doctrine}
               </p>
             </div>
-            <button
-              type="button"
-              disabled={isJcsInterim || isFiringOfficial}
-              onClick={() =>
-                openFireModal({
-                  targetCategory: 'military',
-                  targetId: 'joint_chiefs_chair',
-                  targetName: military.jointChiefsChair.name,
-                  roleTitle: 'Chair of the Joint Chiefs of Staff',
-                  warningText: `Relieving ${military.jointChiefsChair.name} as Chair of the Joint Chiefs triggers immediate Armed Services Committee oversight and temporarily lowers U.S. force readiness.`,
-                })
-              }
-              className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-45"
-            >
-              <UserX className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{isJcsInterim ? 'Acting Vice Chair Serving' : 'Fire Joint Chiefs Chair'}</span>
-            </button>
+            {isJcsInterim ? (
+              <button
+                type="button"
+                onClick={onOpenNominateJcsModal}
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#132238] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1E3557]"
+              >
+                <Shield className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Nominate Permanent Joint Chiefs Chair</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isFiringOfficial}
+                onClick={() =>
+                  openFireModal({
+                    targetCategory: 'military',
+                    targetId: 'joint_chiefs_chair',
+                    targetName: military.jointChiefsChair.name,
+                    roleTitle: 'Chair of the Joint Chiefs of Staff',
+                    warningText: `Relieving ${military.jointChiefsChair.name} as Chair of the Joint Chiefs triggers immediate Armed Services Committee oversight and temporarily lowers U.S. force readiness.`,
+                  })
+                }
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-45"
+              >
+                <UserX className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Fire Joint Chiefs Chair</span>
+              </button>
+            )}
           </article>
 
           {OTHER_WHITE_HOUSE_OFFICIALS.map((off) => {
@@ -1153,6 +1365,17 @@ export const CabinetView: React.FC<CabinetViewProps> = ({
                   <UserX className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>{wasFired ? 'Ousted / Acting Official' : `Fire ${off.roleTitle}`}</span>
                 </button>
+
+                {off.id === 'wh_counsel' && onOpenPardonsModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenPardonsModal}
+                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#132238] bg-[#132238] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1E3557]"
+                  >
+                    <Scale className="h-3.5 w-3.5 text-[#C99A3B]" aria-hidden="true" />
+                    <span>Review Clemency &amp; Pardons Board</span>
+                  </button>
+                )}
               </article>
             );
           })}

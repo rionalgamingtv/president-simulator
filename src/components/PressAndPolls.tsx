@@ -13,11 +13,14 @@ import {
   YAxis,
 } from 'recharts';
 import {
+  AdminSuiteState,
   BattlegroundStateProjection,
+  MilitaryCommandState,
   NationalMetrics,
   NewsCategory,
   NewsHeadlineItem,
   PartyId,
+  PressAccessMode,
   PressConferenceSummary,
   PublicStatementResult,
   ReelectionCampaignState,
@@ -27,7 +30,9 @@ import {
   VoterBlocs,
 } from '../types/game';
 import { formatMonthCalendar } from '../data/historicalPresidents';
+import { TownHallVenueOption } from '../data/expansionSuites';
 import { ElectoralMapPanel } from './ElectoralMapPanel';
+import { PressSuitePanel } from './PressSuitePanel';
 
 const PODIUM_VENUES: StatementVenue[] = [
   'Press Podium',
@@ -44,6 +49,7 @@ interface PressAndPollsProps {
   newsFeed: NewsHeadlineItem[];
   initialMetrics: NationalMetrics;
   metrics: NationalMetrics;
+  military: MilitaryCommandState;
   history: TermHistoryEntry[];
   currentMonth?: number;
   startingYear?: number;
@@ -59,6 +65,12 @@ interface PressAndPollsProps {
   onOpenPressConference: () => void;
   onDismissPressConferenceSummary: () => void;
   onDispatchRegionalOutreach: (state: BattlegroundStateProjection) => void;
+  adminSuite: AdminSuiteState;
+  onChangePressAccess: (mode: PressAccessMode) => void;
+  onHostTownHall: (venue: TownHallVenueOption) => void;
+  onQueueRebuttalStatement: (text: string) => void;
+  onRunCampaignAdWave: (strategyId: string) => void;
+  onRunDebatePrep: (trackId: string) => void;
 }
 
 interface TrendPoint {
@@ -66,6 +78,10 @@ interface TrendPoint {
   fullLabel: string;
   approval: number;
   congressSupport: number;
+  gdpGrowth: number;
+  inflation: number;
+  diplomaticStanding: number;
+  debt: number;
   approvalChange?: number;
   headline?: string;
 }
@@ -124,6 +140,7 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
   newsFeed,
   initialMetrics,
   metrics,
+  military,
   history,
   currentMonth,
   startingYear,
@@ -136,11 +153,19 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
   onOpenPressConference,
   onDismissPressConferenceSummary,
   onDispatchRegionalOutreach,
+  adminSuite,
+  onChangePressAccess,
+  onHostTownHall,
+  onQueueRebuttalStatement,
+  onRunCampaignAdWave,
+  onRunDebatePrep,
 }) => {
   const [categoryFilter, setCategoryFilter] = useState<'all' | NewsCategory>(
     'all'
   );
-  const [showCongressOverlay, setShowCongressOverlay] = useState(false);
+  const [chartMode, setChartMode] = useState<
+    'approval' | 'congress' | 'macro' | 'diplomacy'
+  >('approval');
   const [podiumText, setPodiumText] = useState('');
   const [podiumVenue, setPodiumVenue] =
     useState<StatementVenue>('Press Podium');
@@ -165,6 +190,12 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
           : 'Inauguration Baseline',
         approval: inaugApproval,
         congressSupport: inaugCongress,
+        gdpGrowth: Number(initialMetrics.gdpGrowth.toFixed(2)),
+        inflation: Number(initialMetrics.inflation.toFixed(2)),
+        diplomaticStanding: Number(
+          initialMetrics.diplomaticStanding.toFixed(1)
+        ),
+        debt: Number(initialMetrics.nationalDebtTrillions.toFixed(2)),
       },
     ];
 
@@ -178,6 +209,10 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
           : `Month ${mNum} (Live)`,
         approval: liveApp,
         congressSupport: Number(metrics.congressSupport.toFixed(1)),
+        gdpGrowth: Number(metrics.gdpGrowth.toFixed(2)),
+        inflation: Number(metrics.inflation.toFixed(2)),
+        diplomaticStanding: Number(metrics.diplomaticStanding.toFixed(1)),
+        debt: Number(metrics.nationalDebtTrillions.toFixed(2)),
         approvalChange: Number((liveApp - inaugApproval).toFixed(1)),
       });
       return points;
@@ -194,6 +229,12 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
           : `Month ${entry.month}`,
         approval: app,
         congressSupport: Number(entry.metricsAfter.congressSupport.toFixed(1)),
+        gdpGrowth: Number(entry.metricsAfter.gdpGrowth.toFixed(2)),
+        inflation: Number(entry.metricsAfter.inflation.toFixed(2)),
+        diplomaticStanding: Number(
+          entry.metricsAfter.diplomaticStanding.toFixed(1)
+        ),
+        debt: Number(entry.metricsAfter.nationalDebtTrillions.toFixed(2)),
         approvalChange: Number((app - prevApproval).toFixed(1)),
         headline: entry.outcome.newspaperHeadline,
       });
@@ -220,6 +261,10 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
           : `Month ${activeMonth} (In-Progress)`,
         approval: liveApproval,
         congressSupport: liveCongress,
+        gdpGrowth: Number(metrics.gdpGrowth.toFixed(2)),
+        inflation: Number(metrics.inflation.toFixed(2)),
+        diplomaticStanding: Number(metrics.diplomaticStanding.toFixed(1)),
+        debt: Number(metrics.nationalDebtTrillions.toFixed(2)),
         approvalChange: Number((liveApproval - lastApp).toFixed(1)),
         headline: 'Mid-month live polling update',
       });
@@ -272,29 +317,28 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-1 rounded-lg border border-stone-200 bg-stone-50 p-1">
-              <button
-                type="button"
-                onClick={() => setShowCongressOverlay(false)}
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  !showCongressOverlay
-                    ? 'bg-[#132238] text-white'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                Approval Only
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCongressOverlay(true)}
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  showCongressOverlay
-                    ? 'bg-[#132238] text-white'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                Compare Congress
-              </button>
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-stone-200 bg-stone-50 p-1">
+              {(
+                [
+                  { id: 'approval', label: 'Approval Only' },
+                  { id: 'congress', label: 'Compare Congress' },
+                  { id: 'macro', label: 'GDP & CPI' },
+                  { id: 'diplomacy', label: 'Diplomacy & Debt' },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setChartMode(m.id)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+                    chartMode === m.id
+                      ? 'bg-[#132238] text-white'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -407,35 +451,39 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
                 tickLine={false}
               />
               <YAxis
-                domain={[0, 100]}
+                domain={chartMode === 'macro' ? [-2, 12] : [0, 100]}
                 tickFormatter={(val) => `${val}%`}
                 tick={{ fill: '#57534E', fontSize: 12 }}
                 axisLine={{ stroke: '#D6D3D1' }}
                 tickLine={false}
                 width={44}
               />
-              <ReferenceLine
-                y={50}
-                stroke="#A8A29E"
-                strokeDasharray="4 4"
-                label={{
-                  value: '50% Majority',
-                  position: 'insideTopRight',
-                  fill: '#78716C',
-                  fontSize: 11,
-                }}
-              />
-              <ReferenceLine
-                y={5}
-                stroke="#DC2626"
-                strokeDasharray="3 3"
-                label={{
-                  value: '5% Impeachment Threshold',
-                  position: 'insideTopRight',
-                  fill: '#B91C1C',
-                  fontSize: 10,
-                }}
-              />
+              {chartMode !== 'macro' && (
+                <>
+                  <ReferenceLine
+                    y={50}
+                    stroke="#A8A29E"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: '50% Majority',
+                      position: 'insideTopRight',
+                      fill: '#78716C',
+                      fontSize: 11,
+                    }}
+                  />
+                  <ReferenceLine
+                    y={5}
+                    stroke="#DC2626"
+                    strokeDasharray="3 3"
+                    label={{
+                      value: '5% Impeachment Threshold',
+                      position: 'insideTopRight',
+                      fill: '#B91C1C',
+                      fontSize: 10,
+                    }}
+                  />
+                </>
+              )}
               <Tooltip
                 content={({ active, payload }) => {
                   if (!active || !payload || payload.length === 0) return null;
@@ -468,7 +516,7 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
                           )}
                         </span>
                       </div>
-                      {showCongressOverlay && (
+                      {chartMode === 'congress' && (
                         <div className="flex items-center justify-between gap-4 font-mono-num">
                           <span className="text-[#B45309] font-medium">
                             Congress Support:
@@ -477,6 +525,46 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
                             {point.congressSupport.toFixed(1)}%
                           </span>
                         </div>
+                      )}
+                      {chartMode === 'macro' && (
+                        <>
+                          <div className="flex items-center justify-between gap-4 font-mono-num">
+                            <span className="text-emerald-700 font-medium">
+                              GDP Growth:
+                            </span>
+                            <span className="font-bold text-emerald-700">
+                              {point.gdpGrowth.toFixed(2)}%
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4 font-mono-num">
+                            <span className="text-red-700 font-medium">
+                              Inflation (CPI):
+                            </span>
+                            <span className="font-bold text-red-700">
+                              {point.inflation.toFixed(2)}%
+                            </span>
+                          </div>
+                        </>
+                      )}
+                      {chartMode === 'diplomacy' && (
+                        <>
+                          <div className="flex items-center justify-between gap-4 font-mono-num">
+                            <span className="text-[#132238] font-medium">
+                              Diplomatic Standing:
+                            </span>
+                            <span className="font-bold text-[#132238]">
+                              {point.diplomaticStanding.toFixed(1)}/100
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-4 font-mono-num">
+                            <span className="text-stone-700 font-medium">
+                              National Debt:
+                            </span>
+                            <span className="font-bold text-stone-900">
+                              ${point.debt.toFixed(2)}T
+                            </span>
+                          </div>
+                        </>
                       )}
                       {point.headline && (
                         <p className="border-t border-stone-100 pt-1.5 text-[11px] leading-snug text-stone-600">
@@ -490,18 +578,20 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
               <Legend
                 wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
               />
-              <Area
-                type="monotone"
-                dataKey="approval"
-                name="Presidential Approval (%)"
-                stroke="#132238"
-                strokeWidth={2.75}
-                fillOpacity={1}
-                fill="url(#approvalAreaFill)"
-                dot={{ r: 3.5, fill: '#132238', strokeWidth: 0 }}
-                activeDot={{ r: 5.5 }}
-              />
-              {showCongressOverlay && (
+              {(chartMode === 'approval' || chartMode === 'congress') && (
+                <Area
+                  type="monotone"
+                  dataKey="approval"
+                  name="Presidential Approval (%)"
+                  stroke="#132238"
+                  strokeWidth={2.75}
+                  fillOpacity={1}
+                  fill="url(#approvalAreaFill)"
+                  dot={{ r: 3.5, fill: '#132238', strokeWidth: 0 }}
+                  activeDot={{ r: 5.5 }}
+                />
+              )}
+              {chartMode === 'congress' && (
                 <Line
                   type="monotone"
                   dataKey="congressSupport"
@@ -511,6 +601,48 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
                   dot={{ r: 3, fill: '#B45309', strokeWidth: 0 }}
                   activeDot={{ r: 5 }}
                 />
+              )}
+              {chartMode === 'macro' && (
+                <>
+                  <Line
+                    type="monotone"
+                    dataKey="gdpGrowth"
+                    name="GDP Growth (%)"
+                    stroke="#047857"
+                    strokeWidth={2.5}
+                    dot={{ r: 3, fill: '#047857', strokeWidth: 0 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="inflation"
+                    name="Inflation CPI (%)"
+                    stroke="#B91C1C"
+                    strokeWidth={2.5}
+                    dot={{ r: 3, fill: '#B91C1C', strokeWidth: 0 }}
+                  />
+                </>
+              )}
+              {chartMode === 'diplomacy' && (
+                <>
+                  <Area
+                    type="monotone"
+                    dataKey="diplomaticStanding"
+                    name="Diplomatic Standing (0–100)"
+                    stroke="#132238"
+                    strokeWidth={2.5}
+                    fillOpacity={1}
+                    fill="url(#approvalAreaFill)"
+                    dot={{ r: 3, fill: '#132238', strokeWidth: 0 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="debt"
+                    name="National Debt ($T)"
+                    stroke="#B45309"
+                    strokeWidth={2.25}
+                    dot={{ r: 3, fill: '#B45309', strokeWidth: 0 }}
+                  />
+                </>
               )}
             </ComposedChart>
           </ResponsiveContainer>
@@ -983,6 +1115,22 @@ export const PressAndPolls: React.FC<PressAndPollsProps> = ({
           })}
         </div>
       </section>
+
+      <PressSuitePanel
+        currentMonth={currentMonth ?? 1}
+        metrics={metrics}
+        initialMetrics={initialMetrics}
+        blocs={blocs}
+        military={military}
+        newsFeed={newsFeed}
+        campaign={campaign}
+        adminSuite={adminSuite}
+        onChangePressAccess={onChangePressAccess}
+        onHostTownHall={onHostTownHall}
+        onQueueRebuttalStatement={onQueueRebuttalStatement}
+        onRunCampaignAdWave={onRunCampaignAdWave}
+        onRunDebatePrep={onRunDebatePrep}
+      />
     </main>
   );
 };
